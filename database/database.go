@@ -33,6 +33,7 @@ type Db interface {
 	Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (*ChildCursor, error)
 
 	ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error)
+	RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr string) error
 	GetXattr(ctx context.Context, inode fuseops.InodeID, attr string) (*[]byte, error)
 	SetXattr(ctx context.Context, inode fuseops.InodeID, attr string, value []byte, flags uint32) error
 }
