@@ -59,13 +59,15 @@ func main() {
 				db, err := titan.NewDB(
 					c.String("db-driver"),
 					c.String("db-uri"),
-					database.NewEraser(),
+					&database.NewEraser(),
 				)
 
 				if err != nil {
 					l.Println(err)
 					return err
 				}
+
+				defer db.Close()
 
 				err = db.Setup(context.Background())
 

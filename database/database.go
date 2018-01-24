@@ -12,6 +12,9 @@ import (
 // Db contains methods for interacting with
 // the underlying database
 type Db interface {
+	Open() error
+	Close() error
+
 	Setup(ctx context.Context) error
 	Stats(ctx context.Context) (*Stats, error)
 	Create(ctx context.Context, entry Entry) (*Entry, error)

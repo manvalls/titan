@@ -16,19 +16,29 @@ import (
 // Driver implements the Db interface for the titan file system
 type Driver struct {
 	DbURI string
-	database.ChunkEraser
+	*database.ChunkEraser
+	*sql.DB
 }
 
-// Setup creates the tables and the initial data required by the file system
-func (d Driver) Setup(ctx context.Context) error {
+// Open opens the underlying connection
+func (d *Driver) Open() error {
 	db, err := sql.Open("mysql", d.DbURI)
 	if err != nil {
 		return err
 	}
 
-	defer db.Close()
+	d.DB = db
+	return nil
+}
 
-	tx, err := db.BeginTx(ctx, nil)
+// Close closes the underlying connection
+func (d *Driver) Close() error {
+	return d.DB.Close()
+}
+
+// Setup creates the tables and the initial data required by the file system
+func (d *Driver) Setup(ctx context.Context) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
 
 	if err != nil {
 		return err
@@ -64,18 +74,10 @@ func (d Driver) Setup(ctx context.Context) error {
 }
 
 // Stats retrieves the file system stats
-func (d Driver) Stats(ctx context.Context) (*database.Stats, error) {
-
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return nil, treatError(err)
-	}
-
-	defer db.Close()
-
+func (d *Driver) Stats(ctx context.Context) (*database.Stats, error) {
 	stats := database.Stats{}
-	row := db.QueryRowContext(ctx, "SELECT inodes, size FROM stats")
-	err = row.Scan(&stats.Inodes, &stats.Size)
+	row := d.DB.QueryRowContext(ctx, "SELECT inodes, size FROM stats")
+	err := row.Scan(&stats.Inodes, &stats.Size)
 
 	if err != nil {
 		return nil, treatError(err)
@@ -85,15 +87,8 @@ func (d Driver) Stats(ctx context.Context) (*database.Stats, error) {
 }
 
 // Create creates a new inode or link
-func (d Driver) Create(ctx context.Context, entry database.Entry) (*database.Entry, error) {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return nil, treatError(err)
-	}
-
-	defer db.Close()
-
-	tx, err := db.BeginTx(ctx, nil)
+func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.Entry, error) {
+	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -195,15 +190,8 @@ func (d Driver) Create(ctx context.Context, entry database.Entry) (*database.Ent
 }
 
 // Forget checks if an inode has any links and removes it if not
-func (d Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return treatError(err)
-	}
-
-	defer db.Close()
-
-	tx, err := db.BeginTx(ctx, nil)
+func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
 	}
@@ -269,15 +257,8 @@ func (d Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 }
 
 // CleanOrphanInodes removes all orphan inodes and chunks
-func (d Driver) CleanOrphanInodes(ctx context.Context) error {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return treatError(err)
-	}
-
-	defer db.Close()
-
-	tx, err := db.BeginTx(ctx, nil)
+func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
 	}
@@ -334,15 +315,8 @@ func (d Driver) CleanOrphanInodes(ctx context.Context) error {
 }
 
 // Unlink removes an entry from the file system
-func (d Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string, removeDots bool) error {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return treatError(err)
-	}
-
-	defer db.Close()
-
-	tx, err := db.BeginTx(ctx, nil)
+func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string, removeDots bool) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
 	}
@@ -412,15 +386,8 @@ func (d Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string,
 }
 
 // Rename renames an entry
-func (d Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return treatError(err)
-	}
-
-	defer db.Close()
-
-	result, err := db.Exec("UPDATE entries SET parent = ?, name = ? WHERE parent = ?, name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
+func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error {
+	result, err := d.DB.ExecContext(ctx, "UPDATE entries SET parent = ?, name = ? WHERE parent = ?, name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
 
 	if err != nil {
 		return treatError(err)
@@ -434,20 +401,13 @@ func (d Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName s
 }
 
 // LookUp finds the entry located under the specified parent with the specified name
-func (d Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*database.Entry, error) {
-	db, err := sql.Open("mysql", d.DbURI)
-	if err != nil {
-		return nil, treatError(err)
-	}
-
-	defer db.Close()
-
-	row := db.QueryRow("SELECT i.id, i.mode, i.size, i.refcount, i.atime, i.mtime, i.ctime, i.crtime, i.target FROM inodes i, entries e WHERE i.id = e.inode AND e.parent = ? AND e.name = ?", uint64(parent), name)
+func (d *Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*database.Entry, error) {
+	row := d.DB.QueryRowContext(ctx, "SELECT i.id, i.mode, i.size, i.refcount, i.atime, i.mtime, i.ctime, i.crtime, i.target FROM inodes i, entries e WHERE i.id = e.inode AND e.parent = ? AND e.name = ?", uint64(parent), name)
 
 	var mode, id uint64
 	inode := database.Inode{}
 
-	err = row.Scan(&id, &mode, &inode.Size, &inode.Nlink, &inode.Atime, &inode.Mtime, &inode.Ctime, &inode.Crtime, &inode.SymLink)
+	err := row.Scan(&id, &mode, &inode.Size, &inode.Nlink, &inode.Atime, &inode.Mtime, &inode.Ctime, &inode.Crtime, &inode.SymLink)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
@@ -456,4 +416,22 @@ func (d Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string)
 	inode.ID = fuseops.InodeID(id)
 
 	return &database.Entry{Inode: inode, Name: name, Parent: parent}, nil
+}
+
+// Get retrieves the stats of a particular inode
+func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inode, error) {
+	var mode uint64
+
+	row := d.DB.QueryRowContext(ctx, "SELECT mode, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
+
+	result := database.Inode{}
+	result.ID = inode
+
+	err := row.Scan(&mode, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
+	if err != nil {
+		return nil, syscall.ENOENT
+	}
+
+	result.Mode = os.FileMode(mode)
+	return &result, nil
 }
