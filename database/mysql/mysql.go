@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"syscall"
+	"time"
 
 	"git.vlrz.es/manvalls/titan/database"
 
@@ -49,7 +50,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE entries (parent BIGINT UNSIGNED NOT NULL, name VARBINARY(255) NOT NULL, inode BIGINT UNSIGNED NOT NULL, PRIMARY KEY (parent, name), INDEX (parent), INDEX (inode), FOREIGN KEY (parent) REFERENCES inodes(id), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
-		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED NOT NULL, storage VARCHAR(255), credentials VARCHAR(255), location VARCHAR(255), bucket VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT NOT NULL, inodeoffset BIGINT NOT NULL, size BIGINT NOT NULL, PRIMARY KEY (id), FOREIGN KEY (inode) REFERENCES inodes(id))",
+		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED NOT NULL, storage VARCHAR(255), credentials VARCHAR(255), location VARCHAR(255), bucket VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT NOT NULL, inodeoffset BIGINT NOT NULL, size BIGINT NOT NULL, PRIMARY KEY (id), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
 		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255), value VARBINARY(4096), PRIMARY KEY (inode, `key`), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
@@ -434,4 +435,102 @@ func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inod
 
 	result.Mode = os.FileMode(mode)
 	return &result, nil
+}
+
+// Touch changes the stats of a file
+func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time) (*database.Inode, error) {
+	chunksToBeDeleted := make([]database.Chunk, 0)
+
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, treatError(err)
+	}
+
+	i, err := d.getInode(tx, inode)
+	if err != nil {
+		tx.Rollback()
+		return nil, treatError(err)
+	}
+
+	if size != nil && *size != i.Size {
+
+		if *size > i.Size {
+			if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, 0, ?)", uint64(i.ID), *size-i.Size); err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+		} else {
+			var rows *sql.Rows
+
+			rows, err = tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ?", uint64(i.ID), *size)
+			if err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+
+			defer rows.Close()
+
+			for rows.Next() {
+
+				chunk := database.Chunk{Inode: i.ID}
+
+				err = rows.Scan(
+					&chunk.ID,
+					&chunk.Storage,
+					&chunk.Credentials,
+					&chunk.Location,
+					&chunk.Bucket,
+					&chunk.Key,
+					&chunk.ObjectOffset,
+					&chunk.InodeOffset,
+					&chunk.Size,
+				)
+
+				if err != nil {
+					tx.Rollback()
+					return nil, treatError(err)
+				}
+
+				if chunk.InodeOffset < *size {
+					if _, err = tx.Exec("UPDATE chunks SET size = ? WHERE id = ?", *size-chunk.InodeOffset, chunk.ID); err != nil {
+						tx.Rollback()
+						return nil, treatError(err)
+					}
+				} else {
+					chunksToBeDeleted = append(chunksToBeDeleted, chunk)
+				}
+
+			}
+
+		}
+
+		i.Size = *size
+	}
+
+	if mode != nil {
+		i.Mode = *mode
+	}
+
+	if atime != nil {
+		i.Atime = *atime
+	}
+
+	if mtime != nil {
+		i.Mtime = *mtime
+	}
+
+	if _, err = tx.Exec("UPDATE inodes SET mode = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Size, i.Atime, i.Mtime); err != nil {
+		tx.Rollback()
+		return nil, treatError(err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, treatError(err)
+	}
+
+	for _, chunk := range chunksToBeDeleted {
+		d.Erase(chunk)
+	}
+
+	return i, nil
 }
