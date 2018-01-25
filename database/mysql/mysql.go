@@ -244,6 +244,11 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 			return treatError(err)
 		}
 
+		if _, err = tx.Exec("UPDATE stats SET size = size - ?", in.Size); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -275,6 +280,8 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 
 	defer rows.Close()
 
+	var size uint64
+
 	for rows.Next() {
 		chunk := database.Chunk{}
 
@@ -296,10 +303,16 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 			return treatError(err)
 		}
 
+		size += chunk.Size
 		chunks = append(chunks, chunk)
 	}
 
 	if _, err = tx.Exec("DELETE c, i FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if _, err = tx.Exec("UPDATE stats SET size = size - ?", size); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
@@ -455,9 +468,14 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 	if size != nil && *size != i.Size {
 
 		if *size > i.Size {
-			if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, 0, ?)", uint64(i.ID), *size-i.Size); err != nil {
+			if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, ?, ?)", uint64(i.ID), i.Size, *size-i.Size); err != nil {
 				tx.Rollback()
-				return nil, err
+				return nil, treatError(err)
+			}
+
+			if _, err = tx.Exec("UPDATE stats SET size = size + ?", *size-i.Size); err != nil {
+				tx.Rollback()
+				return nil, treatError(err)
 			}
 		} else {
 			var rows *sql.Rows
@@ -465,7 +483,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 			rows, err = tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ?", uint64(i.ID), *size)
 			if err != nil {
 				tx.Rollback()
-				return nil, err
+				return nil, treatError(err)
 			}
 
 			defer rows.Close()
@@ -502,6 +520,10 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 
 			}
 
+			if _, err = tx.Exec("UPDATE stats SET size = size - ?", i.Size-*size); err != nil {
+				tx.Rollback()
+				return nil, treatError(err)
+			}
 		}
 
 		i.Size = *size
