@@ -52,7 +52,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED NOT NULL, storage VARCHAR(255), credentials VARCHAR(255), location VARCHAR(255), bucket VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT NOT NULL, inodeoffset BIGINT NOT NULL, size BIGINT NOT NULL, PRIMARY KEY (id), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
-		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255), value VARBINARY(4096), PRIMARY KEY (inode, `key`), FOREIGN KEY (inode) REFERENCES inodes(id))",
+		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255), value VARBINARY(4096), PRIMARY KEY (inode, `key`), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
 		"CREATE TABLE stats (inodes BIGINT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL)",
 
@@ -701,4 +701,26 @@ func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uin
 	}
 
 	return &childCursor{rows: rows}, nil
+}
+
+// ListXattr retrieves the list of extended attributes for the given inode
+func (d *Driver) ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error) {
+	keys := make([]string, 0)
+
+	rows, err := d.DB.Query("SELECT `key` FROM xattr WHERE inode = ?")
+	if err != nil {
+		return nil, treatError(err)
+	}
+
+	for rows.Next() {
+		var key string
+
+		if err = rows.Scan(&key); err != nil {
+			return nil, treatError(err)
+		}
+
+		keys = append(keys, key)
+	}
+
+	return &keys, nil
 }
