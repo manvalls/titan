@@ -629,3 +629,13 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 	return nil
 }
+
+// Chunks grabs the chunks for the given inode, starting at the given offset
+func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChunkCursor, error) {
+	rows, err := d.DB.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? ORDER BY inodeoffset ASC OFFSET ?", uint64(inode), offset)
+	if err != nil {
+		return nil, treatError(err)
+	}
+
+	return &chunkCursor{rows: rows, inode: inode}, nil
+}
