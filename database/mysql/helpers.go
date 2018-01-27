@@ -25,3 +25,21 @@ func (d Driver) getInode(tx *sql.Tx, inode fuseops.InodeID) (*database.Inode, er
 	result.Mode = os.FileMode(mode)
 	return &result, nil
 }
+
+func max(x, y uint64) uint64 {
+
+	if x > y {
+		return x
+	}
+
+	return y
+}
+
+func min(x, y uint64) uint64 {
+
+	if x < y {
+		return x
+	}
+
+	return y
+}

@@ -556,3 +556,76 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 
 	return i, nil
 }
+
+// AddChunk adds a chunk to the given inode
+func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk database.Chunk) error {
+	chunksToBeDeleted := make([]database.Chunk, 0)
+
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return treatError(err)
+	}
+
+	rows, err := tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ?", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
+	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+
+		c := database.Chunk{Inode: inode}
+
+		err = rows.Scan(
+			&c.ID,
+			&c.Storage,
+			&c.Credentials,
+			&c.Location,
+			&c.Bucket,
+			&c.Key,
+			&c.ObjectOffset,
+			&c.InodeOffset,
+			&c.Size,
+		)
+
+		if err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+		if c.InodeOffset > chunk.InodeOffset && c.InodeOffset+c.Size < chunk.InodeOffset+c.Size {
+			chunksToBeDeleted = append(chunksToBeDeleted, c)
+		} else {
+			newInodeOffset := max(c.InodeOffset, chunk.InodeOffset)
+			newInodeEnd := min(c.InodeOffset+c.Size, chunk.InodeOffset+chunk.Size)
+
+			c.ObjectOffset += newInodeOffset - c.InodeOffset
+			c.InodeOffset = newInodeOffset
+			c.Size = newInodeEnd - c.InodeOffset
+
+			if _, err = tx.Exec("UPDATE chunks SET size = ?, inodeoffset = ?, objectoffset = ? WHERE id = ?", c.Size, c.InodeOffset, c.ObjectOffset, c.ID); err != nil {
+				tx.Rollback()
+				return treatError(err)
+			}
+		}
+
+	}
+
+	_, err = tx.Exec("INSERT INTO chunks(inode, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Credentials, chunk.Location, chunk.Bucket, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
+	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return treatError(err)
+	}
+
+	for _, chunk := range chunksToBeDeleted {
+		d.Erase(chunk)
+	}
+
+	return nil
+}
