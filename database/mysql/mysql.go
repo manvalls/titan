@@ -134,6 +134,11 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, treatError(err)
 		}
 
+		if _, err = tx.Exec("UPDATE stats SET inodes = inodes + 1"); err != nil {
+			tx.Rollback()
+			return nil, treatError(err)
+		}
+
 		id, err = result.LastInsertId()
 		if err != nil {
 			tx.Rollback()
@@ -541,7 +546,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		i.Mtime = *mtime
 	}
 
-	if _, err = tx.Exec("UPDATE inodes SET mode = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Size, i.Atime, i.Mtime); err != nil {
+	if _, err = tx.Exec("UPDATE inodes SET mode = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Size, i.Atime, i.Mtime, uint64(i.ID)); err != nil {
 		tx.Rollback()
 		return nil, treatError(err)
 	}
@@ -564,6 +569,19 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
+	}
+
+	i, err := d.getInode(tx, inode)
+	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if i.Size < chunk.InodeOffset {
+		if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, ?, ?)", uint64(i.ID), i.Size, chunk.InodeOffset-i.Size); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
 	}
 
 	rows, err := tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ?", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
@@ -615,6 +633,22 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 	_, err = tx.Exec("INSERT INTO chunks(inode, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Credentials, chunk.Location, chunk.Bucket, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
 	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	newInodeSize := max(i.Size, chunk.InodeOffset+chunk.Size)
+
+	if newInodeSize != i.Size {
+		if _, err = tx.Exec("UPDATE stats SET size = size + ?", newInodeSize-i.Size); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+		i.Size = newInodeSize
+	}
+
+	if _, err = tx.Exec("UPDATE inodes SET size = ?, atime = NOW(), mtime = NOW(), ctime = NOW() WHERE id = ?", i.Size, uint64(i.ID)); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
