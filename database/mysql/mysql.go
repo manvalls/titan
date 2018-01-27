@@ -666,6 +666,10 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 // Chunks grabs the chunks for the given inode, starting at the given offset
 func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChunkCursor, error) {
+	if _, err := d.DB.Exec("UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+		return nil, treatError(err)
+	}
+
 	rows, err := d.DB.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? ORDER BY inodeoffset ASC OFFSET ?", uint64(inode), offset)
 	if err != nil {
 		return nil, treatError(err)
