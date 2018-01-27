@@ -248,7 +248,7 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 			return treatError(err)
 		}
 
-		if _, err = tx.Exec("UPDATE stats SET size = size - ?", in.Size); err != nil {
+		if _, err = tx.Exec("UPDATE stats SET size = size - ?, inodes = inodes - 1", in.Size); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -311,12 +311,24 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		chunks = append(chunks, chunk)
 	}
 
-	if _, err = tx.Exec("DELETE c, i FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
+	if _, err = tx.Exec("DELETE c FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
 
-	if _, err = tx.Exec("UPDATE stats SET size = size - ?", size); err != nil {
+	result, err := tx.Exec("DELETE FROM inodes WHERE refcount = 0")
+	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	inodes, err := result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if _, err = tx.Exec("UPDATE stats SET size = size - ?, inodes = inodes - ?", size, inodes); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
