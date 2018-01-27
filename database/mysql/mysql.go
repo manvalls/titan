@@ -681,7 +681,7 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint6
 		return nil, treatError(err)
 	}
 
-	rows, err := d.DB.QueryContext(ctx, "SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? ORDER BY inodeoffset ASC OFFSET ?", uint64(inode), offset)
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ? ORDER BY inodeoffset ASC", uint64(inode), offset)
 	if err != nil {
 		return nil, treatError(err)
 	}
