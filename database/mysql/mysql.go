@@ -127,14 +127,13 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			size = 0
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), size, entry.SymLink)
-
-		if err != nil {
+		if _, err = tx.Exec("UPDATE stats SET inodes = inodes + 1, size = size + ?", size); err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
 		}
 
-		if _, err = tx.Exec("UPDATE stats SET inodes = inodes + 1"); err != nil {
+		result, err = tx.Exec("INSERT INTO inodes(mode, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), size, entry.SymLink)
+		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
 		}
