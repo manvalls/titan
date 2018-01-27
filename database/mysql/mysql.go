@@ -724,3 +724,87 @@ func (d *Driver) ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]strin
 
 	return &keys, nil
 }
+
+// RemoveXattr removes the given extended attribute from the given inode
+func (d *Driver) RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr string) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return treatError(err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM xattr WHERE inode = ? AND `key` = ?", uint64(inode), attr); err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if _, err := tx.Exec("UPDATE inodes SET ctime = NOW(), atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	return tx.Commit()
+}
+
+// GetXattr gets a certain external attribute from the given inode
+func (d *Driver) GetXattr(ctx context.Context, inode fuseops.InodeID, attr string) (*[]byte, error) {
+	row := d.DB.QueryRow("SELECT value FROM xattr WHERE inode = ? AND `key` = ?", uint64(inode), attr)
+
+	var data []byte
+	if err := row.Scan(&data); err != nil {
+		return nil, treatError(err)
+	}
+
+	return &data, nil
+}
+
+// SetXattr sets an extended attribute at the given node
+func (d *Driver) SetXattr(ctx context.Context, inode fuseops.InodeID, attr string, value []byte, flags uint32) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return treatError(err)
+	}
+
+	switch flags {
+	case 0x1:
+
+		if _, err = tx.Exec("INSERT INTO xattr(inode, `key`, value) VALUES (?, ?, ?)", uint64(inode), attr, value); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+	case 0x2:
+
+		var result sql.Result
+		var rowsAffected int64
+
+		if result, err = tx.Exec("UPDATE xattr SET value = ? WHERE inode = ? AND `key` = ?", value, uint64(inode), attr); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+		if rowsAffected, err = result.RowsAffected(); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+		if rowsAffected == 0 {
+			tx.Rollback()
+			return syscall.ENODATA
+		}
+
+	default:
+
+		if _, err = tx.Exec("INSERT INTO xattr(inode, `key`, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)", uint64(inode), attr, value); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+	}
+
+	if _, err := tx.Exec("UPDATE inodes SET ctime = NOW(), atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	return tx.Commit()
+}
