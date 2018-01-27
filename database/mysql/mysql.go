@@ -677,11 +677,11 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 // Chunks grabs the chunks for the given inode, starting at the given offset
 func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChunkCursor, error) {
-	if _, err := d.DB.Exec("UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
 
-	rows, err := d.DB.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? ORDER BY inodeoffset ASC OFFSET ?", uint64(inode), offset)
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? ORDER BY inodeoffset ASC OFFSET ?", uint64(inode), offset)
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -691,11 +691,11 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint6
 
 // Children gets the list of children for the given inode
 func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChildCursor, error) {
-	if _, err := d.DB.Exec("UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
 
-	rows, err := d.DB.Query("SELECT e.inode, e.name, i.mode FROM entries e, inodes i WHERE e.parent = ? AND i.id = e.inode OFFSET ?", uint64(inode), offset)
+	rows, err := d.DB.QueryContext(ctx, "SELECT e.inode, e.name, i.mode FROM entries e, inodes i WHERE e.parent = ? AND i.id = e.inode OFFSET ?", uint64(inode), offset)
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -707,7 +707,7 @@ func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uin
 func (d *Driver) ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error) {
 	keys := make([]string, 0)
 
-	rows, err := d.DB.Query("SELECT `key` FROM xattr WHERE inode = ?")
+	rows, err := d.DB.QueryContext(ctx, "SELECT `key` FROM xattr WHERE inode = ?")
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -747,7 +747,7 @@ func (d *Driver) RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr st
 
 // GetXattr gets a certain external attribute from the given inode
 func (d *Driver) GetXattr(ctx context.Context, inode fuseops.InodeID, attr string) (*[]byte, error) {
-	row := d.DB.QueryRow("SELECT value FROM xattr WHERE inode = ? AND `key` = ?", uint64(inode), attr)
+	row := d.DB.QueryRowContext(ctx, "SELECT value FROM xattr WHERE inode = ? AND `key` = ?", uint64(inode), attr)
 
 	var data []byte
 	if err := row.Scan(&data); err != nil {
