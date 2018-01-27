@@ -3,6 +3,7 @@ package mysql
 import (
 	"database/sql"
 	"io"
+	"os"
 
 	"git.vlrz.es/manvalls/titan/database"
 	"github.com/jacobsa/fuse/fuseops"
@@ -42,4 +43,39 @@ func (c *chunkCursor) Next() (*database.Chunk, error) {
 	}
 
 	return &chunk, nil
+}
+
+type childCursor struct {
+	rows *sql.Rows
+}
+
+func (c *childCursor) Close() error {
+	return c.rows.Close()
+}
+
+func (c *childCursor) Next() (*database.Child, error) {
+	ok := c.rows.Next()
+	if !ok {
+		return nil, io.EOF
+	}
+
+	var inode uint64
+	var mode uint32
+	var name string
+
+	err := c.rows.Scan(
+		&inode,
+		&name,
+		&mode,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &database.Child{
+		Inode: fuseops.InodeID(inode),
+		Name:  name,
+		Mode:  os.FileMode(mode),
+	}, nil
 }

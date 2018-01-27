@@ -677,3 +677,17 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint6
 
 	return &chunkCursor{rows: rows, inode: inode}, nil
 }
+
+// Children gets the list of children for the given inode
+func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChildCursor, error) {
+	if _, err := d.DB.Exec("UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+		return nil, treatError(err)
+	}
+
+	rows, err := d.DB.Query("SELECT e.inode, e.name, i.mode FROM entries e, inodes i WHERE e.parent = ? AND i.id = e.inode OFFSET ?", uint64(inode), offset)
+	if err != nil {
+		return nil, treatError(err)
+	}
+
+	return &childCursor{rows: rows}, nil
+}
