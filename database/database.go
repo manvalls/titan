@@ -2,10 +2,10 @@ package database
 
 import (
 	"context"
-	"errors"
 	"os"
 	"time"
 
+	"git.vlrz.es/manvalls/titan/storage"
 	"github.com/jacobsa/fuse/fuseops"
 )
 
@@ -68,22 +68,12 @@ type Chunk struct {
 	// Inode points to the owner inode of this chunk
 	Inode fuseops.InodeID
 
-	// Storage contains the name of the storage service to be used, e.g "wasabi"
-	Storage string
-
-	// Key represents the name of this binary chunk whithin the provided bucket
-	Key string
-
-	// ObjectOffset represents the byte of the object at the storage to take as the
-	// first byte of this chunk
-	ObjectOffset uint64
-
 	// InodeOffset represents the first byte of the inode that the first byte of
 	// this chunk points to
 	InodeOffset uint64
 
-	// Size represents the size of this chunk
-	Size uint64
+	// Chunk points to the relevant storage chunk
+	*storage.Chunk
 }
 
 // ChunkCursor iterates over a certain list of chunks
@@ -103,35 +93,4 @@ type Child struct {
 type ChildCursor interface {
 	Next() (*Child, error)
 	Close() error
-}
-
-// ChunkEraser handles object deletion from the respective storage
-type ChunkEraser struct {
-	erasers map[string]func(chunk Chunk) error
-}
-
-// NewEraser initialises a ChunkEraser
-func NewEraser() ChunkEraser {
-	return ChunkEraser{
-		erasers: make(map[string]func(chunk Chunk) error),
-	}
-}
-
-var errNotSup = errors.New("Storage type not registered in this eraser")
-
-// Erase invokes the eraser function for the corresponding storage
-func (ce ChunkEraser) Erase(c Chunk) error {
-
-	eraser, ok := ce.erasers[c.Storage]
-
-	if !ok {
-		return errNotSup
-	}
-
-	return eraser(c)
-}
-
-// SetEraser sets the eraser for a certain storage service
-func (ce ChunkEraser) SetEraser(storage string, eraser func(chunk Chunk) error) {
-	ce.erasers[storage] = eraser
 }

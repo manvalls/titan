@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"git.vlrz.es/manvalls/titan"
-	"git.vlrz.es/manvalls/titan/database"
+	"git.vlrz.es/manvalls/titan/storage/zero"
 	"github.com/urfave/cli"
 )
 
@@ -59,7 +59,7 @@ func main() {
 				db, err := titan.NewDB(
 					c.String("db-driver"),
 					c.String("db-uri"),
-					&database.NewEraser(),
+					&zero.Zero{},
 				)
 
 				if err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git.vlrz.es/manvalls/titan/database"
+	"git.vlrz.es/manvalls/titan/storage"
 
 	// mysql driver for the sql package
 	_ "github.com/go-sql-driver/mysql"
@@ -17,7 +18,7 @@ import (
 // Driver implements the Db interface for the titan file system
 type Driver struct {
 	DbURI string
-	*database.ChunkEraser
+	storage.Storage
 	*sql.DB
 }
 
@@ -257,7 +258,7 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 	}
 
 	for _, chunk := range chunks {
-		d.Erase(chunk)
+		d.Remove(*chunk.Chunk)
 	}
 
 	return nil
@@ -332,7 +333,7 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 	}
 
 	for _, chunk := range chunks {
-		d.Erase(chunk)
+		d.Remove(*chunk.Chunk)
 	}
 
 	return nil
@@ -558,7 +559,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 	}
 
 	for _, chunk := range chunksToBeDeleted {
-		d.Erase(chunk)
+		d.Remove(*chunk.Chunk)
 	}
 
 	return i, nil
@@ -657,7 +658,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 	}
 
 	for _, chunk := range chunksToBeDeleted {
-		d.Erase(chunk)
+		d.Remove(*chunk.Chunk)
 	}
 
 	return nil
