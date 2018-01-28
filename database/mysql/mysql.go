@@ -50,7 +50,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE entries (parent BIGINT UNSIGNED NOT NULL, name VARBINARY(255) NOT NULL, inode BIGINT UNSIGNED NOT NULL, PRIMARY KEY (parent, name), INDEX (parent), INDEX (inode), FOREIGN KEY (parent) REFERENCES inodes(id), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
-		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED NOT NULL, storage VARCHAR(255), credentials VARCHAR(255), location VARCHAR(255), bucket VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT NOT NULL, inodeoffset BIGINT NOT NULL, size BIGINT NOT NULL, PRIMARY KEY (id), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
+		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED NOT NULL, storage VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT NOT NULL, inodeoffset BIGINT NOT NULL, size BIGINT NOT NULL, PRIMARY KEY (id), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
 		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255), value VARBINARY(4096), PRIMARY KEY (inode, `key`), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
@@ -212,7 +212,7 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 	if in.Nlink == 0 {
 		var rows *sql.Rows
 
-		rows, err = tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ?", in.ID)
+		rows, err = tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ?", in.ID)
 		if err != nil {
 			tx.Rollback()
 			return treatError(err)
@@ -226,9 +226,6 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 			err = rows.Scan(
 				&chunk.ID,
 				&chunk.Storage,
-				&chunk.Credentials,
-				&chunk.Location,
-				&chunk.Bucket,
 				&chunk.Key,
 				&chunk.ObjectOffset,
 				&chunk.InodeOffset,
@@ -275,7 +272,7 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 
 	chunks := make([]database.Chunk, 0, 1)
 
-	rows, err := tx.Query("SELECT c.id, c.storage, c.credentials, c.location, c.bucket, c.key, c.objectoffset, c.inodeoffset, c.size, c.inode FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0")
+	rows, err := tx.Query("SELECT c.id, c.storage, c.key, c.objectoffset, c.inodeoffset, c.size, c.inode FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0")
 
 	if err != nil {
 		tx.Rollback()
@@ -292,9 +289,6 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		err = rows.Scan(
 			&chunk.ID,
 			&chunk.Storage,
-			&chunk.Credentials,
-			&chunk.Location,
-			&chunk.Bucket,
 			&chunk.Key,
 			&chunk.ObjectOffset,
 			&chunk.InodeOffset,
@@ -496,7 +490,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		} else {
 			var rows *sql.Rows
 
-			rows, err = tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ?", uint64(i.ID), *size)
+			rows, err = tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ?", uint64(i.ID), *size)
 			if err != nil {
 				tx.Rollback()
 				return nil, treatError(err)
@@ -511,9 +505,6 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 				err = rows.Scan(
 					&chunk.ID,
 					&chunk.Storage,
-					&chunk.Credentials,
-					&chunk.Location,
-					&chunk.Bucket,
 					&chunk.Key,
 					&chunk.ObjectOffset,
 					&chunk.InodeOffset,
@@ -595,7 +586,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		}
 	}
 
-	rows, err := tx.Query("SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ?", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
+	rows, err := tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ?", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
 	if err != nil {
 		tx.Rollback()
 		return treatError(err)
@@ -610,9 +601,6 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		err = rows.Scan(
 			&c.ID,
 			&c.Storage,
-			&c.Credentials,
-			&c.Location,
-			&c.Bucket,
 			&c.Key,
 			&c.ObjectOffset,
 			&c.InodeOffset,
@@ -642,7 +630,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 	}
 
-	_, err = tx.Exec("INSERT INTO chunks(inode, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Credentials, chunk.Location, chunk.Bucket, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
+	_, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
 	if err != nil {
 		tx.Rollback()
 		return treatError(err)
@@ -681,7 +669,7 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint6
 		return nil, treatError(err)
 	}
 
-	rows, err := d.DB.QueryContext(ctx, "SELECT id, storage, credentials, location, bucket, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ? ORDER BY inodeoffset ASC", uint64(inode), offset)
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ? ORDER BY inodeoffset ASC", uint64(inode), offset)
 	if err != nil {
 		return nil, treatError(err)
 	}

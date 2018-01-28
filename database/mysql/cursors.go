@@ -29,9 +29,6 @@ func (c *chunkCursor) Next() (*database.Chunk, error) {
 	err := c.rows.Scan(
 		&chunk.ID,
 		&chunk.Storage,
-		&chunk.Credentials,
-		&chunk.Location,
-		&chunk.Bucket,
 		&chunk.Key,
 		&chunk.ObjectOffset,
 		&chunk.InodeOffset,

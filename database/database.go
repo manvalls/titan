@@ -71,18 +71,6 @@ type Chunk struct {
 	// Storage contains the name of the storage service to be used, e.g "wasabi"
 	Storage string
 
-	// Credentials contains an identificative name of the credentials to be used
-	// when establishing a session with the storage service
-	Credentials string
-
-	// Location contains primary location information whithin the storage
-	// service, i.e the region in most cases
-	Location string
-
-	// Bucket contains secondary location information whithin the storage
-	// service, i.e the bucket in most cases
-	Bucket string
-
 	// Key represents the name of this binary chunk whithin the provided bucket
 	Key string
 
