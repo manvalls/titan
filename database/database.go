@@ -26,11 +26,12 @@ type Db interface {
 
 	LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*Entry, error)
 	Get(ctx context.Context, inode fuseops.InodeID) (*Inode, error)
+	GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]Inode, error)
 	Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time) (*Inode, error)
 
 	AddChunk(ctx context.Context, inode fuseops.InodeID, chunk Chunk) error
-	Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (ChunkCursor, error)
-	Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (ChildCursor, error)
+	Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]Chunk, error)
+	Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]Child, error)
 
 	ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error)
 	RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr string) error
@@ -76,21 +77,9 @@ type Chunk struct {
 	*storage.Chunk
 }
 
-// ChunkCursor iterates over a certain list of chunks
-type ChunkCursor interface {
-	Next() (*Chunk, error)
-	Close() error
-}
-
 // Child represents a child entry within a directory
 type Child struct {
 	Inode fuseops.InodeID
 	Name  string
 	Mode  os.FileMode
-}
-
-// ChildCursor iterates over a certain list of children
-type ChildCursor interface {
-	Next() (*Child, error)
-	Close() error
 }

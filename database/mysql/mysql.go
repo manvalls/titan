@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"git.vlrz.es/manvalls/titan/database"
+	"git.vlrz.es/manvalls/titan/math"
 	"git.vlrz.es/manvalls/titan/storage"
 
 	// mysql driver for the sql package
@@ -461,6 +464,40 @@ func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inod
 	return &result, nil
 }
 
+// GetAll retrieves the stats of requested Inodes
+func (d *Driver) GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]database.Inode, error) {
+	values := make([]string, 0)
+
+	for _, value := range inodes {
+		values = append(values, strconv.FormatUint(uint64(value), 10))
+	}
+
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, mode, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id IN ("+strings.Join(values, ", ")+")")
+	if err != nil {
+		return nil, treatError(err)
+	}
+
+	inodeList := make([]database.Inode, 0)
+
+	for rows.Next() {
+		var id uint64
+		var mode uint32
+
+		result := database.Inode{}
+
+		err = rows.Scan(&id, &mode, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
+		if err != nil {
+			return nil, treatError(err)
+		}
+
+		result.ID = fuseops.InodeID(id)
+		result.Mode = os.FileMode(mode)
+		inodeList = append(inodeList, result)
+	}
+
+	return &inodeList, nil
+}
+
 // Touch changes the stats of a file
 func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time) (*database.Inode, error) {
 	chunksToBeDeleted := make([]database.Chunk, 0)
@@ -616,8 +653,8 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		if c.InodeOffset > chunk.InodeOffset && c.InodeOffset+c.Size < chunk.InodeOffset+c.Size {
 			chunksToBeDeleted = append(chunksToBeDeleted, c)
 		} else {
-			newInodeOffset := max(c.InodeOffset, chunk.InodeOffset)
-			newInodeEnd := min(c.InodeOffset+c.Size, chunk.InodeOffset+chunk.Size)
+			newInodeOffset := math.Max(c.InodeOffset, chunk.InodeOffset)
+			newInodeEnd := math.Min(c.InodeOffset+c.Size, chunk.InodeOffset+chunk.Size)
 
 			c.ObjectOffset += newInodeOffset - c.InodeOffset
 			c.InodeOffset = newInodeOffset
@@ -637,7 +674,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		return treatError(err)
 	}
 
-	newInodeSize := max(i.Size, chunk.InodeOffset+chunk.Size)
+	newInodeSize := math.Max(i.Size, chunk.InodeOffset+chunk.Size)
 
 	if newInodeSize != i.Size {
 		if _, err = tx.Exec("UPDATE stats SET size = size + ?", newInodeSize-i.Size); err != nil {
@@ -665,7 +702,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 }
 
 // Chunks grabs the chunks for the given inode, starting at the given offset
-func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChunkCursor, error) {
+func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]database.Chunk, error) {
 	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
@@ -675,11 +712,32 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID, offset uint6
 		return nil, treatError(err)
 	}
 
-	return &chunkCursor{rows: rows, inode: inode}, nil
+	chunks := make([]database.Chunk, 0)
+
+	for rows.Next() {
+		chunk := database.Chunk{Inode: inode}
+
+		err := rows.Scan(
+			&chunk.ID,
+			&chunk.Storage,
+			&chunk.Key,
+			&chunk.ObjectOffset,
+			&chunk.InodeOffset,
+			&chunk.Size,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		chunks = append(chunks, chunk)
+	}
+
+	return &chunks, nil
 }
 
 // Children gets the list of children for the given inode
-func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (database.ChildCursor, error) {
+func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]database.Child, error) {
 	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
@@ -689,7 +747,33 @@ func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID, offset uin
 		return nil, treatError(err)
 	}
 
-	return &childCursor{rows: rows}, nil
+	children := make([]database.Child, 0)
+
+	for rows.Next() {
+		var inode uint64
+		var mode uint32
+		var name string
+
+		err := rows.Scan(
+			&inode,
+			&name,
+			&mode,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		child := database.Child{
+			Inode: fuseops.InodeID(inode),
+			Name:  name,
+			Mode:  os.FileMode(mode),
+		}
+
+		children = append(children, child)
+	}
+
+	return &children, nil
 }
 
 // ListXattr retrieves the list of extended attributes for the given inode
