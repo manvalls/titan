@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"git.vlrz.es/manvalls/titan"
 	"git.vlrz.es/manvalls/titan/storage/zero"
 	"github.com/urfave/cli"
 )
@@ -56,7 +55,7 @@ func main() {
 			Action: func(c *cli.Context) error {
 				l := log.New(os.Stderr, "", 0)
 
-				db, err := titan.NewDB(
+				db, err := newDB(
 					c.String("db-driver"),
 					c.String("db-uri"),
 					&zero.Zero{},
