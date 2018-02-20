@@ -9,6 +9,7 @@ import (
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/math"
 	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/jacobsa/fuse/fuseops"
 )
 
 // Inode represents a cached inode
@@ -17,6 +18,7 @@ type Inode struct {
 	Size    uint64
 	Storage storage.Storage
 	Path    string
+	Inode   fuseops.InodeID
 
 	InactivityTimeout time.Duration
 	BufferSize        uint32
