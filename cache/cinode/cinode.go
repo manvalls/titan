@@ -23,6 +23,8 @@ type Inode struct {
 	InactivityTimeout time.Duration
 	BufferSize        uint32
 	Atime             time.Time
+	Ctime             time.Time
+	LastValidation    time.Time
 
 	mutex     sync.Mutex
 	listeners []listener
@@ -45,6 +47,7 @@ type listener struct {
 func NewInode() *Inode {
 	return &Inode{
 		Atime:             time.Now(),
+		LastValidation:    time.Now(),
 		BufferSize:        15e3,
 		InactivityTimeout: 20 * time.Second,
 		mutex:             sync.Mutex{},

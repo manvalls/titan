@@ -22,6 +22,7 @@ type Cache struct {
 	CacheLocation      string
 	PruneInterval      time.Duration
 	InactivityTimeout  time.Duration
+	CtimeCacheTimeout  time.Duration
 	FreeSpaceThreshold uint64
 	MaxInodes          uint64
 	BufferSize         uint32
@@ -36,6 +37,7 @@ func NewCache() *Cache {
 	return &Cache{
 		PruneInterval:      5 * time.Minute,
 		InactivityTimeout:  20 * time.Second,
+		CtimeCacheTimeout:  60 * time.Second,
 		BufferSize:         15e3,
 		FreeSpaceThreshold: 5 * 1e9,
 		MaxInodes:          10e3,
@@ -75,15 +77,50 @@ func (c *Cache) Destroy() error {
 	return os.RemoveAll(c.CacheLocation)
 }
 
+// Validate checks a certain entry for its validity
+func (c *Cache) Validate(inode fuseops.InodeID) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	in, ok := c.inodes[inode]
+	if !ok {
+		return
+	}
+
+	dbInode, err := c.Db.Get(context.Background(), inode)
+	if err != nil {
+		return
+	}
+
+	if in.Ctime.Before(dbInode.Ctime) {
+		c.rm(inode)
+	} else {
+		in.LastValidation = time.Now()
+	}
+}
+
 // ReadInodeAt fills the provided buffer for the provided inode at the
 // provided offset
 func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, err error) {
 	c.mutex.Lock()
 
 	in, ok := c.inodes[inode]
+
+	if ok && time.Now().Sub(in.LastValidation) > c.CtimeCacheTimeout {
+		c.Validate(inode)
+		in, ok = c.inodes[inode]
+	}
+
 	if !ok {
 		var chunks *[]database.Chunk
 		var key string
+		var dbInode *database.Inode
+
+		dbInode, err = c.Db.Get(context.Background(), inode)
+		if err != nil {
+			c.mutex.Unlock()
+			return 0, err
+		}
 
 		in = cinode.NewInode()
 		chunks, err = c.Db.Chunks(context.Background(), inode, uint64(off))
@@ -93,8 +130,8 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 		}
 
 		in.Chunks = *chunks
-		lastChunk := in.Chunks[len(in.Chunks)-1]
-		in.Size = lastChunk.InodeOffset + lastChunk.Size
+		in.Size = dbInode.Size
+		in.Ctime = dbInode.Ctime
 		in.Storage = c.Storage
 
 		key, err = storage.Key()
