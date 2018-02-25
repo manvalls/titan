@@ -12,12 +12,12 @@ import (
 func (d Driver) getInode(tx *sql.Tx, inode fuseops.InodeID) (*database.Inode, error) {
 	var mode uint64
 
-	row := tx.QueryRow("SELECT mode, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
+	row := tx.QueryRow("SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
 
 	result := database.Inode{}
 	result.ID = inode
 
-	err := row.Scan(&mode, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
+	err := row.Scan(&mode, &result.Uid, &result.Gid, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}

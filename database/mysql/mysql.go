@@ -50,7 +50,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 	}
 
 	queries := []string{
-		"CREATE TABLE inodes ( id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, mode INT UNSIGNED NOT NULL, target VARBINARY(4096), size BIGINT UNSIGNED NOT NULL, refcount INT UNSIGNED NOT NULL, atime DATETIME NOT NULL, mtime DATETIME NOT NULL, ctime DATETIME NOT NULL, crtime DATETIME NOT NULL, PRIMARY KEY (id) )",
+		"CREATE TABLE inodes ( id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, mode INT UNSIGNED NOT NULL, gid INT UNSIGNED NOT NULL, uid INT UNSIGNED NOT NULL, target VARBINARY(4096), size BIGINT UNSIGNED NOT NULL, refcount INT UNSIGNED NOT NULL, atime DATETIME NOT NULL, mtime DATETIME NOT NULL, ctime DATETIME NOT NULL, crtime DATETIME NOT NULL, PRIMARY KEY (id) )",
 
 		"CREATE TABLE entries (parent BIGINT UNSIGNED NOT NULL, name VARBINARY(255) NOT NULL, inode BIGINT UNSIGNED NOT NULL, PRIMARY KEY (parent, name), INDEX (parent), INDEX (inode), FOREIGN KEY (parent) REFERENCES inodes(id), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
@@ -60,7 +60,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE stats (inodes BIGINT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL)",
 
-		"INSERT INTO inodes(id, mode, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 4096, 2, NOW(), NOW(), NOW(), NOW())",
+		"INSERT INTO inodes(id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 0, 0, 4096, 2, NOW(), NOW(), NOW(), NOW())",
 		"INSERT INTO entries(parent, name, inode) VALUES(1, '.', 1)",
 		"INSERT INTO entries(parent, name, inode) VALUES(1, '..', 1)",
 		"INSERT INTO stats(inodes, size) VALUES(1, 4096)",
@@ -430,12 +430,12 @@ func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName 
 
 // LookUp finds the entry located under the specified parent with the specified name
 func (d *Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*database.Entry, error) {
-	row := d.DB.QueryRowContext(ctx, "SELECT i.id, i.mode, i.size, i.refcount, i.atime, i.mtime, i.ctime, i.crtime, i.target FROM inodes i, entries e WHERE i.id = e.inode AND e.parent = ? AND e.name = ?", uint64(parent), name)
+	row := d.DB.QueryRowContext(ctx, "SELECT i.id, i.mode, i.uid, i.gid, i.size, i.refcount, i.atime, i.mtime, i.ctime, i.crtime, i.target FROM inodes i, entries e WHERE i.id = e.inode AND e.parent = ? AND e.name = ?", uint64(parent), name)
 
 	var mode, id uint64
 	inode := database.Inode{}
 
-	err := row.Scan(&id, &mode, &inode.Size, &inode.Nlink, &inode.Atime, &inode.Mtime, &inode.Ctime, &inode.Crtime, &inode.SymLink)
+	err := row.Scan(&id, &mode, &inode.Uid, &inode.Gid, &inode.Size, &inode.Nlink, &inode.Atime, &inode.Mtime, &inode.Ctime, &inode.Crtime, &inode.SymLink)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
@@ -450,12 +450,12 @@ func (d *Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string
 func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inode, error) {
 	var mode uint64
 
-	row := d.DB.QueryRowContext(ctx, "SELECT mode, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
+	row := d.DB.QueryRowContext(ctx, "SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
 
 	result := database.Inode{}
 	result.ID = inode
 
-	err := row.Scan(&mode, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
+	err := row.Scan(&mode, &result.Uid, &result.Gid, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
@@ -472,7 +472,7 @@ func (d *Driver) GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]datab
 		values = append(values, strconv.FormatUint(uint64(value), 10))
 	}
 
-	rows, err := d.DB.QueryContext(ctx, "SELECT id, mode, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id IN ("+strings.Join(values, ", ")+")")
+	rows, err := d.DB.QueryContext(ctx, "SELECT id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id IN ("+strings.Join(values, ", ")+")")
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -485,7 +485,7 @@ func (d *Driver) GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]datab
 
 		result := database.Inode{}
 
-		err = rows.Scan(&id, &mode, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
+		err = rows.Scan(&id, &mode, &result.Uid, &result.Gid, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
 		if err != nil {
 			return nil, treatError(err)
 		}
@@ -499,7 +499,7 @@ func (d *Driver) GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]datab
 }
 
 // Touch changes the stats of a file
-func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time) (*database.Inode, error) {
+func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time, uid *uint32, gid *uint32) (*database.Inode, error) {
 	chunksToBeDeleted := make([]database.Chunk, 0)
 
 	tx, err := d.DB.BeginTx(ctx, nil)
@@ -586,7 +586,15 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		i.Mtime = *mtime
 	}
 
-	if _, err = tx.Exec("UPDATE inodes SET mode = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Size, i.Atime, i.Mtime, uint64(i.ID)); err != nil {
+	if uid != nil {
+		i.Uid = *uid
+	}
+
+	if gid != nil {
+		i.Gid = *gid
+	}
+
+	if _, err = tx.Exec("UPDATE inodes SET mode = ?, uid = ?, gid = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Uid, i.Gid, i.Size, i.Atime, i.Mtime, uint64(i.ID)); err != nil {
 		tx.Rollback()
 		return nil, treatError(err)
 	}
