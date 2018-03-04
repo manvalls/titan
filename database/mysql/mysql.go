@@ -15,7 +15,7 @@ import (
 
 	// mysql driver for the sql package
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 // Driver implements the Db interface for the titan file system
@@ -136,7 +136,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, treatError(err)
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), parentInode.Uid, parentInode.Gid, size, entry.SymLink)
+		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, entry.SymLink)
 		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)

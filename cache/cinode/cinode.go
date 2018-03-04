@@ -9,7 +9,7 @@ import (
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/math"
 	"git.vlrz.es/manvalls/titan/storage"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 // Inode represents a cached inode

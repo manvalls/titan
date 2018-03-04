@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	"git.vlrz.es/manvalls/titan/database"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 func (d Driver) getInode(tx *sql.Tx, inode fuseops.InodeID) (*database.Inode, error) {

@@ -7,7 +7,7 @@ import (
 
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/storage"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 // Writer wraps writes to an open file descriptor

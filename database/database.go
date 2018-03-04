@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"git.vlrz.es/manvalls/titan/storage"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 // Db contains methods for interacting with

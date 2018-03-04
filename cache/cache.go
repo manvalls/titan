@@ -12,7 +12,7 @@ import (
 	"git.vlrz.es/manvalls/titan/cache/cinode"
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/storage"
-	"github.com/jacobsa/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseops"
 )
 
 // Cache abstracts away file I/O through a local cache
