@@ -12,16 +12,15 @@ import (
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/math"
 	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/fuse/fuseops"
 
 	// mysql driver for the sql package
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/manvalls/fuse/fuseops"
 )
 
 // Driver implements the Db interface for the titan file system
 type Driver struct {
 	DbURI string
-	storage.Storage
 	*sql.DB
 }
 
@@ -328,6 +327,56 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CleanOrphanChunks removes orphaned chunks
+func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st storage.Storage, workers int) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query("SELECT storage, `key` FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	ch := make(chan storage.Chunk)
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			for chunk := range ch {
+				st.Remove(chunk)
+			}
+		}()
+	}
+
+	for rows.Next() {
+		chunk := storage.Chunk{}
+
+		err = rows.Scan(
+			&chunk.Storage,
+			&chunk.Key,
+		)
+
+		if err != nil {
+			close(ch)
+			return err
+		}
+
+		ch <- chunk
+	}
+
+	close(ch)
+
+	_, err = tx.Exec("DELETE FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // Unlink removes an entry from the file system

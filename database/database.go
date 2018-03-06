@@ -20,6 +20,7 @@ type Db interface {
 	Create(ctx context.Context, entry Entry) (*Entry, error)
 	Forget(ctx context.Context, inode fuseops.InodeID) error
 	CleanOrphanInodes(ctx context.Context) error
+	CleanOrphanChunks(ctx context.Context, threshold time.Time, st storage.Storage, workers int) error
 
 	Unlink(ctx context.Context, parent fuseops.InodeID, name string, removeDots bool) error
 	Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error
