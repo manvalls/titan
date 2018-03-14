@@ -17,6 +17,15 @@ type S3 struct {
 	Bucket  string
 }
 
+// Setup sets up the storage
+func (s *S3) Setup() error {
+	_, err := s.Client.CreateBucket(&s3.CreateBucketInput{
+		Bucket: aws.String(s.Bucket),
+	})
+
+	return err
+}
+
 // GetChunk stores the contents of a reader and returns the built chunk
 func (s *S3) GetChunk(reader io.Reader) (*storage.Chunk, error) {
 	r := &storage.ReaderWithSize{Reader: reader}

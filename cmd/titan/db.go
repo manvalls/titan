@@ -5,16 +5,17 @@ import (
 
 	"git.vlrz.es/manvalls/titan/database"
 	"git.vlrz.es/manvalls/titan/database/mysql"
+	"github.com/urfave/cli"
 )
 
 var errDbNotSup = errors.New("Database driver not supported")
 
-func newDB(dbDriver string, dbURI string) (database.Db, error) {
+func newDB(c *cli.Context) (database.Db, error) {
 	var db database.Db
 
-	switch dbDriver {
+	switch c.String("db-driver") {
 	case "mysql":
-		db = &mysql.Driver{DbURI: dbURI}
+		db = &mysql.Driver{DbURI: c.String("db-uri")}
 	default:
 		return nil, errDbNotSup
 	}

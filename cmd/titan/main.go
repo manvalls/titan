@@ -33,9 +33,52 @@ func main() {
 		// Storage options
 		cli.StringFlag{
 			Name:   "storage-driver",
-			Value:  "S3",
+			Value:  "s3",
 			Usage:  "storage driver",
 			EnvVar: "TITAN_STORAGE_DRIVER",
+		},
+		cli.StringFlag{
+			Name:   "storage-name",
+			Value:  "s3",
+			Usage:  "storage name",
+			EnvVar: "TITAN_STORAGE_NAME",
+		},
+
+		cli.StringFlag{
+			Name:   "s3-bucket",
+			Value:  "titan",
+			Usage:  "S3 bucket",
+			EnvVar: "TITAN_S3_BUCKET",
+		},
+		cli.StringFlag{
+			Name:   "s3-region",
+			Value:  "us-east-1",
+			Usage:  "S3 region",
+			EnvVar: "TITAN_S3_REGION",
+		},
+		cli.StringFlag{
+			Name:   "s3-key",
+			Value:  "",
+			Usage:  "S3 key",
+			EnvVar: "TITAN_S3_KEY",
+		},
+		cli.StringFlag{
+			Name:   "s3-secret",
+			Value:  "",
+			Usage:  "S3 secret",
+			EnvVar: "TITAN_S3_SECRET",
+		},
+		cli.StringFlag{
+			Name:   "s3-token",
+			Value:  "",
+			Usage:  "S3 token",
+			EnvVar: "TITAN_S3_TOKEN",
+		},
+		cli.StringFlag{
+			Name:   "s3-endpoint",
+			Value:  "",
+			Usage:  "S3 endpoint",
+			EnvVar: "TITAN_S3_ENDPOINT",
 		},
 
 		// Cache options
@@ -54,11 +97,7 @@ func main() {
 			Action: func(c *cli.Context) error {
 				l := log.New(os.Stderr, "", 0)
 
-				db, err := newDB(
-					c.String("db-driver"),
-					c.String("db-uri"),
-				)
-
+				db, err := newDB(c)
 				if err != nil {
 					l.Println(err)
 					return err
@@ -67,7 +106,18 @@ func main() {
 				defer db.Close()
 
 				err = db.Setup(context.Background())
+				if err != nil {
+					l.Println(err)
+					return err
+				}
 
+				st, err := newStorage(c)
+				if err != nil {
+					l.Println(err)
+					return err
+				}
+
+				err = st.Setup()
 				if err != nil {
 					l.Println(err)
 					return err

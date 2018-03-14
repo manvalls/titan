@@ -36,6 +36,7 @@ func Key() (string, error) {
 
 // Storage implements methods required to persist data
 type Storage interface {
+	Setup() error
 	GetChunk(reader io.Reader) (*Chunk, error)
 	GetReadCloser(Chunk) (io.ReadCloser, error)
 	Remove(Chunk) error

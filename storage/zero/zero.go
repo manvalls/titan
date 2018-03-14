@@ -11,6 +11,11 @@ type Zero struct {
 	Storage string
 }
 
+// Setup sets up the storage
+func (z *Zero) Setup() error {
+	return nil
+}
+
 // GetChunk stores the contents of a reader and returns the built chunk
 func (z *Zero) GetChunk(reader io.Reader) (*storage.Chunk, error) {
 	var err error
