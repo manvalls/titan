@@ -26,7 +26,7 @@ type Driver struct {
 
 // Open opens the underlying connection
 func (d *Driver) Open() error {
-	db, err := sql.Open("mysql", d.DbURI)
+	db, err := sql.Open("mysql", d.DbURI+"?parseTime=true")
 	if err != nil {
 		return err
 	}
@@ -49,13 +49,13 @@ func (d *Driver) Setup(ctx context.Context) error {
 	}
 
 	queries := []string{
-		"CREATE TABLE inodes ( id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, mode INT UNSIGNED NOT NULL, gid INT UNSIGNED NOT NULL, uid INT UNSIGNED NOT NULL, target VARBINARY(4096), size BIGINT UNSIGNED NOT NULL, refcount INT UNSIGNED NOT NULL, atime DATETIME NOT NULL, mtime DATETIME NOT NULL, ctime DATETIME NOT NULL, crtime DATETIME NOT NULL, PRIMARY KEY (id) )",
+		"CREATE TABLE inodes ( id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, mode INT UNSIGNED NOT NULL, gid INT UNSIGNED NOT NULL, uid INT UNSIGNED NOT NULL, target VARBINARY(4096) NOT NULL DEFAULT \"\", size BIGINT UNSIGNED NOT NULL, refcount INT UNSIGNED NOT NULL, atime DATETIME NOT NULL, mtime DATETIME NOT NULL, ctime DATETIME NOT NULL, crtime DATETIME NOT NULL, PRIMARY KEY (id) )",
 
 		"CREATE TABLE entries (parent BIGINT UNSIGNED NOT NULL, name VARBINARY(255) NOT NULL, inode BIGINT UNSIGNED NOT NULL, PRIMARY KEY (parent, name), INDEX (parent), INDEX (inode), FOREIGN KEY (parent) REFERENCES inodes(id), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
 		"CREATE TABLE chunks (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, inode BIGINT UNSIGNED, storage VARCHAR(255), `key` VARCHAR(255), objectoffset BIGINT, inodeoffset BIGINT, size BIGINT, orphandate DATETIME, PRIMARY KEY (id), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
-		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255), value VARBINARY(4096), PRIMARY KEY (inode, `key`), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
+		"CREATE TABLE xattr (inode BIGINT UNSIGNED NOT NULL, `key` VARBINARY(255) NOT NULL, value VARBINARY(4096) NOT NULL, PRIMARY KEY (inode, `key`), INDEX (inode), FOREIGN KEY (inode) REFERENCES inodes(id))",
 
 		"CREATE TABLE stats (inodes BIGINT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL)",
 
@@ -469,7 +469,8 @@ func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName 
 func (d *Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*database.Entry, error) {
 	row := d.DB.QueryRowContext(ctx, "SELECT i.id, i.mode, i.uid, i.gid, i.size, i.refcount, i.atime, i.mtime, i.ctime, i.crtime, i.target FROM inodes i, entries e WHERE i.id = e.inode AND e.parent = ? AND e.name = ?", uint64(parent), name)
 
-	var mode, id uint64
+	var mode uint32
+	var id uint64
 	inode := database.Inode{}
 
 	err := row.Scan(&id, &mode, &inode.Uid, &inode.Gid, &inode.Size, &inode.Nlink, &inode.Atime, &inode.Mtime, &inode.Ctime, &inode.Crtime, &inode.SymLink)
@@ -485,7 +486,7 @@ func (d *Driver) LookUp(ctx context.Context, parent fuseops.InodeID, name string
 
 // Get retrieves the stats of a particular inode
 func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inode, error) {
-	var mode uint64
+	var mode uint32
 
 	row := d.DB.QueryRowContext(ctx, "SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
 

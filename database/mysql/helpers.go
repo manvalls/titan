@@ -10,7 +10,7 @@ import (
 )
 
 func (d Driver) getInode(tx *sql.Tx, inode fuseops.InodeID) (*database.Inode, error) {
-	var mode uint64
+	var mode uint32
 
 	row := tx.QueryRow("SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
 

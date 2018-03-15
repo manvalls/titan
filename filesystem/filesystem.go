@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	totalBlocks = ^uint64(0)
-	totalInodes = ^uint64(0)
+	totalBlocks = 281474976710656
+	totalInodes = 281474976710656
 	blockSize   = 4096
 	ioSize      = 65536
 )
@@ -196,10 +196,10 @@ func (fs *FileSystem) MkDir(ctx context.Context, op *fuseops.MkDirOp) error {
 		Parent: op.Parent,
 		Name:   op.Name,
 		Inode: database.Inode{
-			Mode: op.Mode | os.ModeDir,
 			InodeAttributes: fuseops.InodeAttributes{
-				Uid: op.Uid,
-				Gid: op.Gid,
+				Mode: op.Mode | os.ModeDir,
+				Uid:  op.Uid,
+				Gid:  op.Gid,
 			},
 		},
 	})
@@ -219,10 +219,10 @@ func (fs *FileSystem) MkNode(ctx context.Context, op *fuseops.MkNodeOp) error {
 		Parent: op.Parent,
 		Name:   op.Name,
 		Inode: database.Inode{
-			Mode: op.Mode,
 			InodeAttributes: fuseops.InodeAttributes{
-				Uid: op.Uid,
-				Gid: op.Gid,
+				Mode: op.Mode,
+				Uid:  op.Uid,
+				Gid:  op.Gid,
 			},
 		},
 	})
@@ -242,10 +242,10 @@ func (fs *FileSystem) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) 
 		Parent: op.Parent,
 		Name:   op.Name,
 		Inode: database.Inode{
-			Mode: op.Mode,
 			InodeAttributes: fuseops.InodeAttributes{
-				Uid: op.Uid,
-				Gid: op.Gid,
+				Mode: op.Mode,
+				Uid:  op.Uid,
+				Gid:  op.Gid,
 			},
 		},
 	})
@@ -286,10 +286,10 @@ func (fs *FileSystem) CreateSymlink(ctx context.Context, op *fuseops.CreateSymli
 		Name:   op.Name,
 		Inode: database.Inode{
 			SymLink: op.Target,
-			Mode:    os.ModeSymlink | 0777,
 			InodeAttributes: fuseops.InodeAttributes{
-				Uid: op.Uid,
-				Gid: op.Gid,
+				Mode: os.ModeSymlink | 0777,
+				Uid:  op.Uid,
+				Gid:  op.Gid,
 			},
 		},
 	})

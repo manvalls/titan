@@ -50,7 +50,6 @@ type Entry struct {
 // Inode represents a file system inode
 type Inode struct {
 	ID      fuseops.InodeID
-	Mode    os.FileMode
 	SymLink string
 	fuseops.InodeAttributes
 }
