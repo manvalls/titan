@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	as3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/urfave/cli"
 )
 
@@ -33,13 +34,13 @@ func newStorage(c *cli.Context) (storage.Storage, error) {
 
 		session, err := session.NewSession(config)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		storage := &s3.S3{
 			Storage: c.String("storage-name"),
 			Bucket:  c.String("s3-bucket"),
-			Client:  s3.New(session),
+			Client:  as3.New(session),
 		}
 
 		return storage, nil
