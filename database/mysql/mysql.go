@@ -135,7 +135,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, treatError(err)
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, entry.SymLink)
+		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, entry.SymLink)
 		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
@@ -151,7 +151,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 
 		if entry.Mode.IsDir() {
 
-			_, err = tx.Exec("INSERT INTO entries(parent, name, inode) VALUES(?, '.', ?), VALUES(?, '..', ?)", uint64(entry.ID), uint64(entry.ID), uint64(entry.ID), uint64(entry.Parent))
+			_, err = tx.Exec("INSERT INTO entries(parent, name, inode) VALUES (?, '.', ?), (?, '..', ?)", uint64(entry.ID), uint64(entry.ID), uint64(entry.ID), uint64(entry.Parent))
 			if err != nil {
 				tx.Rollback()
 				return nil, treatError(err)
@@ -194,7 +194,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 		return nil, treatError(err)
 	}
 
-	return &entry, nil
+	return &entry, tx.Commit()
 }
 
 // Forget checks if an inode has any links and removes it if not
