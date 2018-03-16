@@ -50,6 +50,7 @@ type FileSystem struct {
 func NewFileSystem() *FileSystem {
 	return &FileSystem{
 		writers: make(map[fuseops.HandleID]*writer.Writer),
+		folders: make(map[fuseops.HandleID]*[]database.Child),
 		lookups: make(map[fuseops.InodeID]uint64),
 
 		AttributesExpiration: 10 * time.Second,
@@ -93,7 +94,7 @@ func (fs *FileSystem) children(ctx context.Context, op *fuseops.ReadDirOp) (*[]d
 		return children, nil
 	}
 
-	children, err := fs.Db.Children(ctx, op.Inode, 0)
+	children, err := fs.Db.Children(ctx, op.Inode)
 	if err != nil {
 		return nil, err
 	}
@@ -347,6 +348,7 @@ func (fs *FileSystem) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) error 
 		d := fuseutil.Dirent{
 			Offset: fuseops.DirOffset(i + 1),
 			Inode:  child.Inode,
+			Name:   child.Name,
 		}
 
 		switch {

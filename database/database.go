@@ -31,8 +31,8 @@ type Db interface {
 	Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time, uid *uint32, gid *uint32) (*Inode, error)
 
 	AddChunk(ctx context.Context, inode fuseops.InodeID, chunk Chunk) error
-	Chunks(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]Chunk, error)
-	Children(ctx context.Context, inode fuseops.InodeID, offset uint64) (*[]Child, error)
+	Chunks(ctx context.Context, inode fuseops.InodeID) (*[]Chunk, error)
+	Children(ctx context.Context, inode fuseops.InodeID) (*[]Child, error)
 
 	ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error)
 	RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr string) error

@@ -123,7 +123,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 		}
 
 		in = cinode.NewInode()
-		chunks, err = c.Db.Chunks(context.Background(), inode, uint64(off))
+		chunks, err = c.Db.Chunks(context.Background(), inode)
 		if err != nil {
 			c.mutex.Unlock()
 			return 0, err
