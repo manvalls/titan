@@ -435,17 +435,17 @@ func (fs *FileSystem) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) er
 // SyncFile flushes a writer
 func (fs *FileSystem) SyncFile(ctx context.Context, op *fuseops.SyncFileOp) error {
 	w := fs.writer(ctx, op.Handle, op.Inode)
-	w.Flush()
+	err := w.Flush()
 	fs.Validate(op.Inode)
-	return nil
+	return err
 }
 
 // FlushFile flushes a writer
 func (fs *FileSystem) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) error {
 	w := fs.writer(ctx, op.Handle, op.Inode)
-	w.Flush()
+	err := w.Flush()
 	fs.Validate(op.Inode)
-	return nil
+	return err
 }
 
 // ReleaseFileHandle cleans the resources of a handle

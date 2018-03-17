@@ -73,7 +73,7 @@ type Chunk struct {
 	InodeOffset uint64
 
 	// Chunk points to the relevant storage chunk
-	*storage.Chunk
+	storage.Chunk
 }
 
 // Child represents a child entry within a directory

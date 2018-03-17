@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -225,7 +226,12 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 			return treatError(err)
 		}
 
-		if _, err = tx.Exec("DELETE x, i FROM xattr x, inodes i WHERE i.id = ? AND i.id = x.inode", uint64(in.ID)); err != nil {
+		if _, err = tx.Exec("DELETE x FROM xattr x, inodes i WHERE i.id = ? AND i.id = x.inode", uint64(in.ID)); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+
+		if _, err = tx.Exec("DELETE FROM inodes WHERE id = ?", uint64(in.ID)); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -256,7 +262,12 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		return treatError(err)
 	}
 
-	if _, err = tx.Exec("DELETE x, i FROM xattr x, inodes i WHERE i.refcount = 0 AND i.id = x.inode"); err != nil {
+	if _, err = tx.Exec("DELETE x FROM xattr x, inodes i WHERE i.refcount = 0 AND i.id = x.inode"); err != nil {
+		tx.Rollback()
+		return treatError(err)
+	}
+
+	if _, err = tx.Exec("DELETE FROM inodes WHERE refcount = 0"); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
@@ -287,12 +298,16 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 	}
 
 	ch := make(chan storage.Chunk)
+	wg := sync.WaitGroup{}
 
 	for i := 0; i < workers; i++ {
+		wg.Add(1)
 		go func() {
 			for chunk := range ch {
 				st.Remove(chunk)
 			}
+
+			wg.Done()
 		}()
 	}
 
@@ -306,6 +321,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 
 		if err != nil {
 			close(ch)
+			wg.Wait()
 			return err
 		}
 
@@ -313,6 +329,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 	}
 
 	close(ch)
+	wg.Wait()
 
 	_, err = tx.Exec("DELETE FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold)
 	if err != nil {
@@ -627,7 +644,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 	}
 
-	_, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
+	_, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
 	if err != nil {
 		tx.Rollback()
 		return treatError(err)

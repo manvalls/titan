@@ -11,7 +11,7 @@ import (
 
 var randReader = rand.New(
 	rand.NewSource(
-		time.Unix(1000000, 0).UnixNano(),
+		time.Now().UnixNano(),
 	),
 )
 
@@ -23,7 +23,7 @@ func Key() (string, error) {
 	defer randMutex.Unlock()
 
 	ulid, err := ulid.New(
-		ulid.Timestamp(time.Unix(1000000, 0)),
+		ulid.Timestamp(time.Now()),
 		randReader,
 	)
 

@@ -83,74 +83,6 @@ func main() {
 			Usage:  "S3 endpoint",
 			EnvVar: "TITAN_S3_ENDPOINT",
 		},
-
-		// Mount options
-		cli.StringFlag{
-			Name:   "mount-point",
-			Value:  "/titan",
-			Usage:  "folder to mount titan in",
-			EnvVar: "TITAN_MOUNT_POINT",
-		},
-		cli.StringFlag{
-			Name:   "cache-folder",
-			Value:  "/tmp/titan",
-			Usage:  "folder to use when storing cache files",
-			EnvVar: "TITAN_CACHE_FOLDER",
-		},
-		cli.DurationFlag{
-			Name:   "prune-interval",
-			Value:  5 * time.Minute,
-			Usage:  "prune interval",
-			EnvVar: "TITAN_PRUNE_INTERVAL",
-		},
-		cli.DurationFlag{
-			Name:   "inactivity-timeout",
-			Value:  20 * time.Second,
-			Usage:  "inactivity timeout",
-			EnvVar: "TITAN_INACTIVITY_TIMEOUT",
-		},
-		cli.DurationFlag{
-			Name:   "cache-timeout",
-			Value:  60 * time.Second,
-			Usage:  "cache timeout",
-			EnvVar: "TITAN_CACHE_TIMEOUT",
-		},
-		cli.Uint64Flag{
-			Name:   "disk-threshold",
-			Value:  5 * 1e9,
-			Usage:  "free disk space threshold",
-			EnvVar: "TITAN_DISK_THRESHOLD",
-		},
-		cli.Uint64Flag{
-			Name:   "max-cache-inodes",
-			Value:  10e3,
-			Usage:  "max number of inodes in the cache",
-			EnvVar: "TITAN_CACHE_MAX_INODES",
-		},
-		cli.UintFlag{
-			Name:   "cache-buffer",
-			Value:  15e3,
-			Usage:  "size of the cache buffer",
-			EnvVar: "TITAN_CACHE_BUFFER",
-		},
-		cli.DurationFlag{
-			Name:   "attr-exp",
-			Value:  10 * time.Second,
-			Usage:  "attributes expiration",
-			EnvVar: "TITAN_ATTR_EXP",
-		},
-		cli.DurationFlag{
-			Name:   "entry-exp",
-			Value:  10 * time.Second,
-			Usage:  "entry expiration",
-			EnvVar: "TITAN_ENTRY_EXP",
-		},
-		cli.Int64Flag{
-			Name:   "max-chunk-size",
-			Value:  100e6,
-			Usage:  "max chunk size",
-			EnvVar: "TITAN_MAX_CHUNK_SIZE",
-		},
 	}
 
 	app.Commands = []cli.Command{
@@ -191,8 +123,22 @@ func main() {
 		},
 
 		cli.Command{
-			Name:  "mount",
-			Flags: flags,
+			Name: "clean",
+			Flags: append(
+				flags,
+				cli.DurationFlag{
+					Name:   "keep-last",
+					Value:  0 * time.Second,
+					Usage:  "keep chunks which were orphaned the last X days",
+					EnvVar: "TITAN_CLEAN_KEEP_LAST",
+				},
+				cli.IntFlag{
+					Name:   "workers",
+					Value:  10,
+					Usage:  "number of parallel workers",
+					EnvVar: "TITAN_CLEAN_WORKERS",
+				},
+			),
 			Action: func(c *cli.Context) error {
 				l := log.New(os.Stderr, "", 0)
 
@@ -203,6 +149,119 @@ func main() {
 				}
 
 				defer db.Close()
+
+				err = db.CleanOrphanInodes(context.Background())
+				if err != nil {
+					l.Println(err)
+					return err
+				}
+
+				st, err := newStorage(c)
+				if err != nil {
+					l.Println(err)
+					return err
+				}
+
+				err = db.CleanOrphanChunks(
+					context.Background(),
+					time.Now().Add(-c.Duration("keep-last")),
+					st,
+					c.Int("workers"),
+				)
+
+				return err
+			},
+		},
+
+		cli.Command{
+			Name: "mount",
+			Flags: append(
+				flags,
+
+				// Mount options
+				cli.StringFlag{
+					Name:   "mount-point",
+					Value:  "/titan",
+					Usage:  "folder to mount titan in",
+					EnvVar: "TITAN_MOUNT_POINT",
+				},
+				cli.StringFlag{
+					Name:   "cache-folder",
+					Value:  "/tmp/titan",
+					Usage:  "folder to use when storing cache files",
+					EnvVar: "TITAN_CACHE_FOLDER",
+				},
+				cli.DurationFlag{
+					Name:   "prune-interval",
+					Value:  5 * time.Minute,
+					Usage:  "prune interval",
+					EnvVar: "TITAN_PRUNE_INTERVAL",
+				},
+				cli.DurationFlag{
+					Name:   "inactivity-timeout",
+					Value:  20 * time.Second,
+					Usage:  "inactivity timeout",
+					EnvVar: "TITAN_INACTIVITY_TIMEOUT",
+				},
+				cli.DurationFlag{
+					Name:   "cache-timeout",
+					Value:  60 * time.Second,
+					Usage:  "cache timeout",
+					EnvVar: "TITAN_CACHE_TIMEOUT",
+				},
+				cli.Uint64Flag{
+					Name:   "disk-threshold",
+					Value:  5 * 1e9,
+					Usage:  "free disk space threshold",
+					EnvVar: "TITAN_DISK_THRESHOLD",
+				},
+				cli.Uint64Flag{
+					Name:   "max-cache-inodes",
+					Value:  10e3,
+					Usage:  "max number of inodes in the cache",
+					EnvVar: "TITAN_CACHE_MAX_INODES",
+				},
+				cli.UintFlag{
+					Name:   "cache-buffer",
+					Value:  15e3,
+					Usage:  "size of the cache buffer",
+					EnvVar: "TITAN_CACHE_BUFFER",
+				},
+				cli.DurationFlag{
+					Name:   "attr-exp",
+					Value:  10 * time.Second,
+					Usage:  "attributes expiration",
+					EnvVar: "TITAN_ATTR_EXP",
+				},
+				cli.DurationFlag{
+					Name:   "entry-exp",
+					Value:  10 * time.Second,
+					Usage:  "entry expiration",
+					EnvVar: "TITAN_ENTRY_EXP",
+				},
+				cli.Int64Flag{
+					Name:   "max-chunk-size",
+					Value:  100e6,
+					Usage:  "max chunk size",
+					EnvVar: "TITAN_MAX_CHUNK_SIZE",
+				},
+			),
+			Action: func(c *cli.Context) error {
+				l := log.New(os.Stderr, "", 0)
+
+				db, err := newDB(c)
+				if err != nil {
+					l.Println(err)
+					return err
+				}
+
+				defer db.Close()
+
+				err = db.CleanOrphanInodes(context.Background())
+				if err != nil {
+					l.Println(err)
+					return err
+				}
 
 				st, err := newStorage(c)
 				if err != nil {

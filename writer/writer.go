@@ -17,34 +17,41 @@ type Writer struct {
 	fuseops.InodeID
 	MaxChunkSize int64
 
-	writer io.WriteCloser
-	offset int64
-	size   int64
-	mutex  sync.Mutex
+	flushError chan error
+	writer     io.WriteCloser
+	offset     int64
+	size       int64
+	mutex      sync.Mutex
 }
 
 // NewWriter builds a writer
 func NewWriter() *Writer {
 	return &Writer{
+		flushError:   make(chan error),
 		MaxChunkSize: 100e6,
 		mutex:        sync.Mutex{},
 	}
 }
 
 // Flush closes the current open writer, if any
-func (w *Writer) Flush() {
+func (w *Writer) Flush() error {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	w.flush()
+	return w.flush()
 }
 
-func (w *Writer) flush() {
+func (w *Writer) flush() error {
 	if w.writer != nil {
 		w.writer.Close()
+
 		w.writer = nil
 		w.offset = 0
 		w.size = 0
+
+		return <-w.flushError
 	}
+
+	return nil
 }
 
 // WriteAt writes at the specified offset to the current inode
@@ -63,13 +70,14 @@ func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 			chunk, gcErr := w.GetChunk(reader)
 			if gcErr != nil {
 				reader.CloseWithError(gcErr)
+				w.flushError <- gcErr
 				return
 			}
 
-			w.AddChunk(context.Background(), w.InodeID, database.Chunk{
+			w.flushError <- w.AddChunk(context.Background(), w.InodeID, database.Chunk{
 				Inode:       w.InodeID,
 				InodeOffset: uint64(off),
-				Chunk:       chunk,
+				Chunk:       *chunk,
 			})
 		}()
 
