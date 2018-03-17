@@ -80,9 +80,9 @@ func (c *Cache) Destroy() error {
 // Validate checks a certain entry for its validity
 func (c *Cache) Validate(inode fuseops.InodeID) {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	in, ok := c.inodes[inode]
+	c.mutex.Unlock()
+
 	if !ok {
 		return
 	}

@@ -84,7 +84,7 @@ func (inode *Inode) getFile() (*os.File, error) {
 		return inode.file, nil
 	}
 
-	file, err := os.Open(inode.Path)
+	file, err := os.OpenFile(inode.Path, os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,6 @@ func (inode *Inode) addRange(offset, size uint64) bool {
 	}
 
 	inode.sections = newSections
-
 	newListeners := make([]listener, 0)
 
 	for _, listener := range inode.listeners {
@@ -236,7 +235,7 @@ func (inode *Inode) sendError(err error) {
 func (inode *Inode) fetch(offset uint64) {
 
 	for _, chunk := range inode.Chunks {
-		if chunk.InodeOffset+chunk.Size < offset {
+		if chunk.InodeOffset+chunk.Size > offset {
 			var err error
 
 			storageChunk := storage.Chunk{
