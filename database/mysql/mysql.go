@@ -258,12 +258,14 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 
 	}
 
-	if err = tx.Commit(); err != nil {
-		return treatError(err)
+	if len(chunks) > 0 {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
 	}
 
-	if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
-		tx.Rollback()
+	if err = tx.Commit(); err != nil {
 		return treatError(err)
 	}
 
@@ -325,12 +327,14 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		return treatError(err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return treatError(err)
+	if len(chunks) > 0 {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
 	}
 
-	if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
-		tx.Rollback()
+	if err = tx.Commit(); err != nil {
 		return treatError(err)
 	}
 
@@ -645,12 +649,14 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		return nil, treatError(err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, treatError(err)
+	if len(chunksToBeDeleted) > 0 {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
+			tx.Rollback()
+			return nil, treatError(err)
+		}
 	}
 
-	if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
-		tx.Rollback()
+	if err = tx.Commit(); err != nil {
 		return nil, treatError(err)
 	}
 
@@ -745,12 +751,14 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		return treatError(err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return treatError(err)
+	if len(chunksToBeDeleted) > 0 {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
 	}
 
-	if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
-		tx.Rollback()
+	if err = tx.Commit(); err != nil {
 		return treatError(err)
 	}
 
