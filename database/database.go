@@ -22,7 +22,7 @@ type Db interface {
 	CleanOrphanInodes(ctx context.Context) error
 	CleanOrphanChunks(ctx context.Context, threshold time.Time, st storage.Storage, workers int) error
 
-	Unlink(ctx context.Context, parent fuseops.InodeID, name string, removeDots bool) error
+	Unlink(ctx context.Context, parent fuseops.InodeID, name string, isFolder bool) error
 	Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error
 
 	LookUp(ctx context.Context, parent fuseops.InodeID, name string) (*Entry, error)

@@ -119,14 +119,20 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 		return nil
 	}
 
+	needsRefcountChange := true
+
 	if entry.ID == 0 {
 		var result sql.Result
-		var size uint64
+		var size, refcount uint64
 		var id int64
 
+		needsRefcountChange = false
+
 		if entry.Mode.IsDir() {
+			refcount = 2
 			size = 4096
 		} else {
+			refcount = 1
 			size = 0
 		}
 
@@ -135,7 +141,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, treatError(err)
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, 0, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, entry.SymLink)
+		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, refcount, entry.SymLink)
 		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
@@ -157,7 +163,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 				return nil, treatError(err)
 			}
 
-			_, err = tx.Exec("UPDATE inodes SET refcount = refcount + 2 WHERE id = ?", uint64(entry.Parent))
+			_, err = tx.Exec("UPDATE inodes SET refcount = refcount + 1 WHERE id = ?", uint64(entry.Parent))
 			if err != nil {
 				tx.Rollback()
 				return nil, treatError(err)
@@ -188,10 +194,12 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 		return nil, treatError(err)
 	}
 
-	_, err = tx.Exec("UPDATE inodes SET refcount = refcount + 1 WHERE id = ?", uint64(entry.ID))
-	if err != nil {
-		tx.Rollback()
-		return nil, treatError(err)
+	if needsRefcountChange {
+		_, err = tx.Exec("UPDATE inodes SET refcount = refcount + 1 WHERE id = ?", uint64(entry.ID))
+		if err != nil {
+			tx.Rollback()
+			return nil, treatError(err)
+		}
 	}
 
 	return &entry, tx.Commit()
@@ -380,7 +388,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 }
 
 // Unlink removes an entry from the file system
-func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string, removeDots bool) error {
+func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string, isFolder bool) error {
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
@@ -403,7 +411,7 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 	var expectedChildren uint64
 	var wrongTypeError error
 
-	if removeDots {
+	if isFolder {
 		expectedChildren = 2
 		wrongTypeError = syscall.ENOTDIR
 	} else {
@@ -416,7 +424,7 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 		return wrongTypeError
 	}
 
-	if removeDots {
+	if isFolder {
 		if _, err = tx.Exec("DELETE FROM entries WHERE inode = ? OR parent = ?", uint64(inode), uint64(inode)); err != nil {
 			tx.Rollback()
 			return treatError(err)
@@ -432,7 +440,7 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 			return treatError(err)
 		}
 	} else {
-		if _, err = tx.Exec("DELETE FROM entries WHERE inode = ?", uint64(inode)); err != nil {
+		if _, err = tx.Exec("DELETE FROM entries WHERE parent = ? AND name = ?", uint64(parent), name); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
