@@ -218,35 +218,14 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 		return treatError(err)
 	}
 
-	chunks := make([]string, 0, 1)
-
 	if in.Nlink == 0 {
-		var rows *sql.Rows
 
-		rows, err = tx.Query("SELECT id FROM chunks WHERE inode = ?", in.ID)
-		if err != nil {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE inode = ?", in.ID); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
 
-		defer rows.Close()
-
-		for rows.Next() {
-			var id uint64
-
-			err = rows.Scan(
-				&id,
-			)
-
-			if err != nil {
-				tx.Rollback()
-				return treatError(err)
-			}
-
-			chunks = append(chunks, strconv.FormatUint(id, 10))
-		}
-
-		if _, err = tx.Exec("DELETE FROM inodes WHERE id = ?", uint64(in.ID)); err != nil {
+		if _, err = tx.Exec("DELETE x, i FROM xattr x, inodes i WHERE i.id = ? AND i.id = x.inode", uint64(in.ID)); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -256,13 +235,6 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 			return treatError(err)
 		}
 
-	}
-
-	if len(chunks) > 0 {
-		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -279,59 +251,19 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		return treatError(err)
 	}
 
-	chunks := make([]string, 0, 1)
-
-	rows, err := tx.Query("SELECT c.id, c.size FROM chunks c, inodes i WHERE c.inode = i.id AND i.refcount = 0")
-
-	if err != nil {
+	if _, err = tx.Exec("UPDATE chunks c, inodes i SET c.inode = NULL, c.objectoffset = NULL, c.inodeoffset = NULL, c.size = NULL, c.orphandate = NOW() WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
 
-	defer rows.Close()
-
-	var size uint64
-
-	for rows.Next() {
-		var id uint64
-		var csize uint64
-
-		err = rows.Scan(
-			&id,
-			&csize,
-		)
-
-		if err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
-
-		size += csize
-		chunks = append(chunks, strconv.FormatUint(id, 10))
-	}
-
-	result, err := tx.Exec("DELETE FROM inodes WHERE refcount = 0")
-	if err != nil {
+	if _, err = tx.Exec("DELETE x, i FROM xattr x, inodes i WHERE i.refcount = 0 AND i.id = x.inode"); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
 
-	inodes, err := result.RowsAffected()
-	if err != nil {
+	if _, err = tx.Exec("UPDATE stats SET inodes = (SELECT COUNT(*) FROM inodes), size = (SELECT SUM(size) FROM inodes)"); err != nil {
 		tx.Rollback()
 		return treatError(err)
-	}
-
-	if _, err = tx.Exec("UPDATE stats SET size = size - ?, inodes = inodes - ?", size, inodes); err != nil {
-		tx.Rollback()
-		return treatError(err)
-	}
-
-	if len(chunks) > 0 {
-		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunks, ", ") + ")"); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
 	}
 
 	if err = tx.Commit(); err != nil {
