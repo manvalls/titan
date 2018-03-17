@@ -514,40 +514,6 @@ func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inod
 	return &result, nil
 }
 
-// GetAll retrieves the stats of requested Inodes
-func (d *Driver) GetAll(ctx context.Context, inodes []fuseops.InodeID) (*[]database.Inode, error) {
-	values := make([]string, 0)
-
-	for _, value := range inodes {
-		values = append(values, strconv.FormatUint(uint64(value), 10))
-	}
-
-	rows, err := d.DB.QueryContext(ctx, "SELECT id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id IN ("+strings.Join(values, ", ")+")")
-	if err != nil {
-		return nil, treatError(err)
-	}
-
-	inodeList := make([]database.Inode, 0)
-
-	for rows.Next() {
-		var id uint64
-		var mode uint32
-
-		result := database.Inode{}
-
-		err = rows.Scan(&id, &mode, &result.Uid, &result.Gid, &result.Size, &result.Nlink, &result.Atime, &result.Mtime, &result.Ctime, &result.Crtime, &result.SymLink)
-		if err != nil {
-			return nil, treatError(err)
-		}
-
-		result.ID = fuseops.InodeID(id)
-		result.Mode = os.FileMode(mode)
-		inodeList = append(inodeList, result)
-	}
-
-	return &inodeList, nil
-}
-
 // Touch changes the stats of a file
 func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time, uid *uint32, gid *uint32) (*database.Inode, error) {
 	chunksToBeDeleted := make([]string, 0)
@@ -844,7 +810,7 @@ func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID) (*[]databa
 func (d *Driver) ListXattr(ctx context.Context, inode fuseops.InodeID) (*[]string, error) {
 	keys := make([]string, 0)
 
-	rows, err := d.DB.QueryContext(ctx, "SELECT `key` FROM xattr WHERE inode = ?")
+	rows, err := d.DB.QueryContext(ctx, "SELECT `key` FROM xattr WHERE inode = ?", uint64(inode))
 	if err != nil {
 		return nil, treatError(err)
 	}
@@ -888,7 +854,7 @@ func (d *Driver) GetXattr(ctx context.Context, inode fuseops.InodeID, attr strin
 
 	var data []byte
 	if err := row.Scan(&data); err != nil {
-		return nil, treatError(err)
+		return nil, syscall.ENODATA
 	}
 
 	return &data, nil

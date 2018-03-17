@@ -484,7 +484,7 @@ func (fs *FileSystem) GetXattr(ctx context.Context, op *fuseops.GetXattrOp) erro
 		return syscall.ERANGE
 	}
 
-	copy(*value, op.Dst)
+	copy(op.Dst, *value)
 	return nil
 }
 
@@ -496,12 +496,14 @@ func (fs *FileSystem) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) er
 	}
 
 	result := []byte(strings.Join(*attrs, "\000"))
+	result = append(result, 0)
+
 	op.BytesRead = len(result)
 	if op.BytesRead > len(op.Dst) {
 		return syscall.ERANGE
 	}
 
-	copy(result, op.Dst)
+	copy(op.Dst, result)
 	return nil
 }
 
