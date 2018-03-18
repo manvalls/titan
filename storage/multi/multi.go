@@ -25,6 +25,11 @@ func (m *Multi) getStorage(storage string) (storage.Storage, error) {
 	return st, nil
 }
 
+// Setup sets up the storage
+func (m *Multi) Setup() error {
+	return m.Storages[m.Default].Setup()
+}
+
 // GetChunk stores the contents of a reader and returns the built chunk
 func (m *Multi) GetChunk(reader io.Reader) (*storage.Chunk, error) {
 	st, err := m.getStorage(m.Default)

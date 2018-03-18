@@ -80,15 +80,16 @@ func (c *Cache) Destroy() error {
 // Validate checks a certain entry for its validity
 func (c *Cache) Validate(inode fuseops.InodeID) {
 	c.mutex.Lock()
-	in, ok := c.inodes[inode]
-	c.mutex.Unlock()
+	defer c.mutex.Unlock()
 
+	in, ok := c.inodes[inode]
 	if !ok {
 		return
 	}
 
 	dbInode, err := c.Db.Get(context.Background(), inode)
 	if err != nil {
+		c.rm(inode)
 		return
 	}
 
@@ -151,10 +152,14 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 	return in.ReadAt(p, off)
 }
 
-func (c *Cache) rm(inode fuseops.InodeID) {
+// Rm removes an entry from the cache
+func (c *Cache) Rm(inode fuseops.InodeID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	c.rm(inode)
+}
 
+func (c *Cache) rm(inode fuseops.InodeID) {
 	in, ok := c.inodes[inode]
 	if !ok {
 		return
@@ -214,7 +219,7 @@ func (c *Cache) prune() {
 		sort.Sort(byAtime(inodes))
 
 		if len(inodes) == 1 {
-			c.rm(inodes[0].Inode)
+			c.Rm(inodes[0].Inode)
 			return
 		}
 
@@ -232,11 +237,11 @@ func (c *Cache) prune() {
 		sort.Sort(bySize(candidates))
 
 		if len(candidates) == 1 {
-			c.rm(candidates[0].Inode)
+			c.Rm(candidates[0].Inode)
 		} else {
 			for i, inode := range candidates {
 				if i < len(inodes)/2 {
-					c.rm(inode.Inode)
+					c.Rm(inode.Inode)
 				} else {
 					newInodes = append(newInodes, inode)
 				}

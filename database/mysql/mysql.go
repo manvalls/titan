@@ -60,7 +60,7 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE stats (inodes BIGINT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL)",
 
-		"INSERT INTO inodes(id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 0, 0, 4096, 2, NOW(), NOW(), NOW(), NOW())",
+		"INSERT INTO inodes(id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 0, 0, 4096, 2, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())",
 		"INSERT INTO entries(parent, name, inode) VALUES(1, '.', 1)",
 		"INSERT INTO entries(parent, name, inode) VALUES(1, '..', 1)",
 		"INSERT INTO stats(inodes, size) VALUES(1, 4096)",
@@ -142,7 +142,7 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, treatError(err)
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, ?, NOW(), NOW(), NOW(), NOW(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, refcount, entry.SymLink)
+		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, refcount, entry.SymLink)
 		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
@@ -221,7 +221,7 @@ func (d *Driver) Forget(ctx context.Context, inode fuseops.InodeID) error {
 
 	if in.Nlink == 0 {
 
-		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE inode = ?", in.ID); err != nil {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = UTC_TIMESTAMP() WHERE inode = ?", in.ID); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -257,7 +257,7 @@ func (d *Driver) CleanOrphanInodes(ctx context.Context) error {
 		return treatError(err)
 	}
 
-	if _, err = tx.Exec("UPDATE chunks c, inodes i SET c.inode = NULL, c.objectoffset = NULL, c.inodeoffset = NULL, c.size = NULL, c.orphandate = NOW() WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
+	if _, err = tx.Exec("UPDATE chunks c, inodes i SET c.inode = NULL, c.objectoffset = NULL, c.inodeoffset = NULL, c.size = NULL, c.orphandate = UTC_TIMESTAMP() WHERE c.inode = i.id AND i.refcount = 0"); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
@@ -291,7 +291,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 		return err
 	}
 
-	rows, err := tx.Query("SELECT storage, `key` FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold)
+	rows, err := tx.Query("SELECT storage, `key` FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold.In(time.UTC))
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -331,7 +331,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 	close(ch)
 	wg.Wait()
 
-	_, err = tx.Exec("DELETE FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold)
+	_, err = tx.Exec("DELETE FROM chunks WHERE inode IS NULL AND orphandate < ?", threshold.In(time.UTC))
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -413,7 +413,7 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 
 // Rename renames an entry
 func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error {
-	result, err := d.DB.ExecContext(ctx, "UPDATE entries SET parent = ?, name = ? WHERE parent = ?, name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
+	result, err := d.DB.ExecContext(ctx, "UPDATE entries SET parent = ?, name = ? WHERE parent = ? AND name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
 
 	if err != nil {
 		return treatError(err)
@@ -466,6 +466,7 @@ func (d *Driver) Get(ctx context.Context, inode fuseops.InodeID) (*database.Inod
 // Touch changes the stats of a file
 func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time, uid *uint32, gid *uint32) (*database.Inode, error) {
 	chunksToBeDeleted := make([]string, 0)
+	chunksToBeUpdated := make([]database.Chunk, 0)
 
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -481,7 +482,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 	if size != nil && *size != i.Size {
 
 		if *size > i.Size {
-			if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, ?, ?)", uint64(i.ID), i.Size, *size-i.Size); err != nil {
+			if _, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES (?, 'zero', '', 0, ?, ?)", uint64(i.ID), i.Size, *size-i.Size); err != nil {
 				tx.Rollback()
 				return nil, treatError(err)
 			}
@@ -520,14 +521,18 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 				}
 
 				if chunk.InodeOffset < *size {
-					if _, err = tx.Exec("UPDATE chunks SET size = ? WHERE id = ?", *size-chunk.InodeOffset, chunk.ID); err != nil {
-						tx.Rollback()
-						return nil, treatError(err)
-					}
+					chunksToBeUpdated = append(chunksToBeUpdated, chunk)
 				} else {
 					chunksToBeDeleted = append(chunksToBeDeleted, strconv.FormatUint(chunk.ID, 10))
 				}
 
+			}
+
+			for _, chunk := range chunksToBeUpdated {
+				if _, err = tx.Exec("UPDATE chunks SET size = ? WHERE id = ?", *size-chunk.InodeOffset, chunk.ID); err != nil {
+					tx.Rollback()
+					return nil, treatError(err)
+				}
 			}
 
 			if _, err = tx.Exec("UPDATE stats SET size = size - ?", i.Size-*size); err != nil {
@@ -559,13 +564,13 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		i.Gid = *gid
 	}
 
-	if _, err = tx.Exec("UPDATE inodes SET mode = ?, uid = ?, gid = ?, size = ?, atime = ?, mtime = ?, ctime = NOW() WHERE id = ?", uint32(i.Mode), i.Uid, i.Gid, i.Size, i.Atime, i.Mtime, uint64(i.ID)); err != nil {
+	if _, err = tx.Exec("UPDATE inodes SET mode = ?, uid = ?, gid = ?, size = ?, atime = ?, mtime = ?, ctime = UTC_TIMESTAMP() WHERE id = ?", uint32(i.Mode), i.Uid, i.Gid, i.Size, i.Atime.In(time.UTC), i.Mtime.In(time.UTC), uint64(i.ID)); err != nil {
 		tx.Rollback()
 		return nil, treatError(err)
 	}
 
 	if len(chunksToBeDeleted) > 0 {
-		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = UTC_TIMESTAMP() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
 		}
@@ -581,6 +586,10 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 // AddChunk adds a chunk to the given inode
 func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk database.Chunk) error {
 	chunksToBeDeleted := make([]string, 0)
+	chunksToBeUpdated := make([]database.Chunk, 0)
+	chunksToBeInserted := make([]database.Chunk, 1)
+
+	chunksToBeInserted[0] = chunk
 
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -594,7 +603,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 	}
 
 	if i.Size < chunk.InodeOffset {
-		if _, err = tx.Exec("INSERT INTO chunks(inode, storage, objectoffset, inodeoffset, size) VALUES (?, 'zero', 0, ?, ?)", uint64(i.ID), i.Size, chunk.InodeOffset-i.Size); err != nil {
+		if _, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES (?, 'zero', '', 0, ?, ?)", uint64(i.ID), i.Size, chunk.InodeOffset-i.Size); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -626,28 +635,54 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 			return treatError(err)
 		}
 
-		if c.InodeOffset > chunk.InodeOffset && c.InodeOffset+c.Size < chunk.InodeOffset+c.Size {
+		if c.InodeOffset >= chunk.InodeOffset && c.InodeOffset+c.Size <= chunk.InodeOffset+chunk.Size {
 			chunksToBeDeleted = append(chunksToBeDeleted, strconv.FormatUint(c.ID, 10))
 		} else {
-			newInodeOffset := math.Max(c.InodeOffset, chunk.InodeOffset)
-			newInodeEnd := math.Min(c.InodeOffset+c.Size, chunk.InodeOffset+chunk.Size)
+			var newInodeOffset, newInodeEnd uint64
+
+			if c.InodeOffset < chunk.InodeOffset && c.InodeOffset+c.Size > chunk.InodeOffset+chunk.Size {
+				nc := c
+
+				inodeOffset := chunk.InodeOffset + chunk.Size
+				inodeEnd := c.InodeOffset + c.Size
+
+				nc.ObjectOffset += inodeOffset - nc.InodeOffset
+				nc.InodeOffset = inodeOffset
+				nc.Size = inodeEnd - nc.InodeOffset
+
+				chunksToBeInserted = append(chunksToBeInserted, nc)
+			}
+
+			if c.InodeOffset < chunk.InodeOffset {
+				newInodeOffset = c.InodeOffset
+				newInodeEnd = chunk.InodeOffset
+			} else {
+				newInodeOffset = chunk.InodeOffset + chunk.Size
+				newInodeEnd = c.InodeOffset + c.Size
+			}
 
 			c.ObjectOffset += newInodeOffset - c.InodeOffset
 			c.InodeOffset = newInodeOffset
 			c.Size = newInodeEnd - c.InodeOffset
 
-			if _, err = tx.Exec("UPDATE chunks SET size = ?, inodeoffset = ?, objectoffset = ? WHERE id = ?", c.Size, c.InodeOffset, c.ObjectOffset, c.ID); err != nil {
-				tx.Rollback()
-				return treatError(err)
-			}
+			chunksToBeUpdated = append(chunksToBeUpdated, c)
 		}
 
 	}
 
-	_, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?)", uint64(inode), chunk.Storage, chunk.Key, chunk.ObjectOffset, chunk.InodeOffset, chunk.Size)
-	if err != nil {
-		tx.Rollback()
-		return treatError(err)
+	for _, c := range chunksToBeUpdated {
+		if _, err = tx.Exec("UPDATE chunks SET size = ?, inodeoffset = ?, objectoffset = ? WHERE id = ?", c.Size, c.InodeOffset, c.ObjectOffset, c.ID); err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
+	}
+
+	for _, c := range chunksToBeInserted {
+		_, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES(?, ?, ?, ?, ?, ?)", uint64(inode), c.Storage, c.Key, c.ObjectOffset, c.InodeOffset, c.Size)
+		if err != nil {
+			tx.Rollback()
+			return treatError(err)
+		}
 	}
 
 	newInodeSize := math.Max(i.Size, chunk.InodeOffset+chunk.Size)
@@ -661,13 +696,13 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		i.Size = newInodeSize
 	}
 
-	if _, err = tx.Exec("UPDATE inodes SET size = ?, atime = NOW(), mtime = NOW(), ctime = NOW() WHERE id = ?", i.Size, uint64(i.ID)); err != nil {
+	if _, err = tx.Exec("UPDATE inodes SET size = ?, atime = UTC_TIMESTAMP(), mtime = UTC_TIMESTAMP(), ctime = UTC_TIMESTAMP() WHERE id = ?", i.Size, uint64(i.ID)); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
 
 	if len(chunksToBeDeleted) > 0 {
-		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = NOW() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
+		if _, err = tx.Exec("UPDATE chunks SET inode = NULL, objectoffset = NULL, inodeoffset = NULL, size = NULL, orphandate = UTC_TIMESTAMP() WHERE id IN (" + strings.Join(chunksToBeDeleted, ", ") + ")"); err != nil {
 			tx.Rollback()
 			return treatError(err)
 		}
@@ -682,7 +717,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 
 // Chunks grabs the chunks for the given inode
 func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID) (*[]database.Chunk, error) {
-	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = UTC_TIMESTAMP() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
 
@@ -717,7 +752,7 @@ func (d *Driver) Chunks(ctx context.Context, inode fuseops.InodeID) (*[]database
 
 // Children gets the list of children for the given inode
 func (d *Driver) Children(ctx context.Context, inode fuseops.InodeID) (*[]database.Child, error) {
-	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := d.DB.ExecContext(ctx, "UPDATE inodes SET atime = UTC_TIMESTAMP() WHERE id = ?", uint64(inode)); err != nil {
 		return nil, treatError(err)
 	}
 
@@ -789,7 +824,7 @@ func (d *Driver) RemoveXattr(ctx context.Context, inode fuseops.InodeID, attr st
 		return treatError(err)
 	}
 
-	if _, err := tx.Exec("UPDATE inodes SET ctime = NOW(), atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := tx.Exec("UPDATE inodes SET ctime = UTC_TIMESTAMP(), atime = UTC_TIMESTAMP() WHERE id = ?", uint64(inode)); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}
@@ -853,7 +888,7 @@ func (d *Driver) SetXattr(ctx context.Context, inode fuseops.InodeID, attr strin
 
 	}
 
-	if _, err := tx.Exec("UPDATE inodes SET ctime = NOW(), atime = NOW() WHERE id = ?", uint64(inode)); err != nil {
+	if _, err := tx.Exec("UPDATE inodes SET ctime = UTC_TIMESTAMP(), atime = UTC_TIMESTAMP() WHERE id = ?", uint64(inode)); err != nil {
 		tx.Rollback()
 		return treatError(err)
 	}

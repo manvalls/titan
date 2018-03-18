@@ -4,7 +4,9 @@ import (
 	"errors"
 
 	"git.vlrz.es/manvalls/titan/storage"
+	"git.vlrz.es/manvalls/titan/storage/multi"
 	"git.vlrz.es/manvalls/titan/storage/s3"
+	"git.vlrz.es/manvalls/titan/storage/zero"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -14,7 +16,9 @@ import (
 
 var errStorageNotSup = errors.New("Storage driver not supported")
 
-func newStorage(c *cli.Context) (storage.Storage, error) {
+func newStorage(c *cli.Context) (st storage.Storage, err error) {
+	storageName := c.String("storage-name")
+
 	switch c.String("storage-driver") {
 
 	case "s3":
@@ -37,16 +41,24 @@ func newStorage(c *cli.Context) (storage.Storage, error) {
 			return nil, err
 		}
 
-		storage := &s3.S3{
-			Storage: c.String("storage-name"),
+		st = &s3.S3{
+			Storage: storageName,
 			Bucket:  c.String("s3-bucket"),
 			Client:  as3.New(session),
 		}
-
-		return storage, nil
 
 	default:
 		return nil, errStorageNotSup
 
 	}
+
+	return &multi.Multi{
+		Storages: map[string]storage.Storage{
+			storageName: st,
+			"zero": &zero.Zero{
+				Storage: "zero",
+			},
+		},
+		Default: storageName,
+	}, nil
 }

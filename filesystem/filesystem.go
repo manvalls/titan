@@ -184,6 +184,7 @@ func (fs *FileSystem) ForgetInode(ctx context.Context, op *fuseops.ForgetInodeOp
 	lookups := fs.lookups[op.Inode]
 	if lookups <= op.N {
 		delete(fs.lookups, op.Inode)
+		defer fs.Validate(op.Inode)
 		return fs.Forget(ctx, op.Inode)
 	}
 
