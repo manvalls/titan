@@ -2,13 +2,20 @@ package writer
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"git.vlrz.es/manvalls/titan/database"
+	"git.vlrz.es/manvalls/titan/math"
 	"git.vlrz.es/manvalls/titan/storage"
 	"github.com/manvalls/fuse/fuseops"
 )
+
+const maxInt = 9223372036854775807
+
+var errIsClosed = errors.New("Writer already closed")
 
 // Writer wraps writes to an open file descriptor
 type Writer struct {
@@ -16,20 +23,33 @@ type Writer struct {
 	storage.Storage
 	fuseops.InodeID
 	MaxChunkSize int64
+	WaitTimeout  time.Duration
 
-	flushError chan error
-	writer     io.WriteCloser
-	offset     int64
-	size       int64
-	mutex      sync.Mutex
+	ts                time.Time
+	flushError        chan error
+	writer            io.WriteCloser
+	offset            int64
+	size              int64
+	mutex             *sync.Mutex
+	cond              *sync.Cond
+	sleeping          bool
+	closed            bool
+	minAwaitingOffset int64
 }
 
 // NewWriter builds a writer
 func NewWriter() *Writer {
+	m := sync.Mutex{}
 	return &Writer{
-		flushError:   make(chan error),
-		MaxChunkSize: 100e6,
-		mutex:        sync.Mutex{},
+		ts:                time.Now(),
+		flushError:        make(chan error),
+		MaxChunkSize:      134217728,
+		WaitTimeout:       1 * time.Second,
+		mutex:             &m,
+		cond:              sync.NewCond(&m),
+		sleeping:          false,
+		closed:            false,
+		minAwaitingOffset: maxInt,
 	}
 }
 
@@ -45,22 +65,65 @@ func (w *Writer) flush() error {
 		w.writer.Close()
 
 		w.writer = nil
-		w.offset = 0
 		w.size = 0
 
-		return <-w.flushError
+		err := <-w.flushError
+		w.ts = time.Now()
+		return err
 	}
 
 	return nil
+}
+
+// Close closes the current open writer, if any, and marks the writer as closed
+func (w *Writer) Close() {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	defer w.cond.Broadcast()
+	w.closed = true
+	w.flush()
 }
 
 // WriteAt writes at the specified offset to the current inode
 func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	defer w.cond.Broadcast()
 
-	if off != w.offset || w.size+off > w.MaxChunkSize {
-		w.flush()
+	for {
+		w.minAwaitingOffset = math.MinInt(w.minAwaitingOffset, off)
+
+		if w.closed {
+			return 0, errIsClosed
+		}
+
+		if w.size+int64(len(p)) > w.MaxChunkSize {
+			w.flush()
+		}
+
+		if off == w.offset {
+			break
+		}
+
+		inactivity := time.Now().Sub(w.ts)
+		if w.minAwaitingOffset == off && (off < w.offset || inactivity > w.WaitTimeout) {
+			w.flush()
+			break
+		}
+
+		if !w.sleeping {
+			w.sleeping = true
+			go func() {
+				time.Sleep(w.WaitTimeout - inactivity)
+
+				w.mutex.Lock()
+				defer w.mutex.Unlock()
+				defer w.cond.Broadcast()
+				w.sleeping = false
+			}()
+		}
+
+		w.cond.Wait()
 	}
 
 	if w.writer == nil {
@@ -88,10 +151,13 @@ func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 
 	n, err = w.writer.Write(p)
 	w.offset += int64(n)
+	w.size += int64(n)
 
 	if err != nil {
 		w.flush()
 	}
 
+	w.ts = time.Now()
+	w.minAwaitingOffset = maxInt
 	return n, err
 }

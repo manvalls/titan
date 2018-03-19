@@ -33,6 +33,7 @@ type FileSystem struct {
 	AttributesExpiration time.Duration
 	EntryExpiration      time.Duration
 	MaxChunkSize         int64
+	WaitTimeout          time.Duration
 
 	nextHandle fuseops.HandleID
 
@@ -55,7 +56,8 @@ func NewFileSystem() *FileSystem {
 
 		AttributesExpiration: 10 * time.Second,
 		EntryExpiration:      10 * time.Second,
-		MaxChunkSize:         100e6,
+		MaxChunkSize:         134217728,
+		WaitTimeout:          1 * time.Second,
 
 		writerMutex: sync.Mutex{},
 		lookupMutex: sync.Mutex{},
@@ -117,6 +119,7 @@ func (fs *FileSystem) writer(ctx context.Context, handle fuseops.HandleID, inode
 	w.Storage = fs.Storage
 	w.InodeID = inode
 	w.MaxChunkSize = fs.MaxChunkSize
+	w.WaitTimeout = fs.WaitTimeout
 
 	fs.writers[handle] = w
 	return w
@@ -453,7 +456,13 @@ func (fs *FileSystem) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) er
 func (fs *FileSystem) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) error {
 	fs.writerMutex.Lock()
 	defer fs.writerMutex.Unlock()
-	delete(fs.writers, op.Handle)
+
+	w, ok := fs.writers[op.Handle]
+	if ok {
+		w.Close()
+		delete(fs.writers, op.Handle)
+	}
+
 	return nil
 }
 
@@ -515,6 +524,15 @@ func (fs *FileSystem) SetXattr(ctx context.Context, op *fuseops.SetXattrOp) erro
 
 // Destroy frees the resources associated with this file system
 func (fs *FileSystem) Destroy() {
+	fs.writerMutex.Lock()
+	defer fs.writerMutex.Unlock()
+
+	for key, w := range fs.writers {
+		w.Close()
+		delete(fs.writers, key)
+	}
+
 	fs.Db.CleanOrphanInodes(context.Background())
+	fs.Db.Close()
 	fs.Cache.Destroy()
 }

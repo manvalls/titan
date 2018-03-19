@@ -26,6 +26,7 @@ type Cache struct {
 	FreeSpaceThreshold uint64
 	MaxInodes          uint64
 	BufferSize         uint32
+	MaxOffsetDistance  uint64
 
 	stopChannel chan bool
 	mutex       sync.Mutex
@@ -38,7 +39,8 @@ func NewCache() *Cache {
 		PruneInterval:      5 * time.Minute,
 		InactivityTimeout:  20 * time.Second,
 		CtimeCacheTimeout:  60 * time.Second,
-		BufferSize:         15e3,
+		BufferSize:         65536,
+		MaxOffsetDistance:  100e3,
 		FreeSpaceThreshold: 5 * 1e9,
 		MaxInodes:          10e3,
 		stopChannel:        make(chan bool),
@@ -81,7 +83,10 @@ func (c *Cache) Destroy() error {
 func (c *Cache) Validate(inode fuseops.InodeID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	c.validate(inode)
+}
 
+func (c *Cache) validate(inode fuseops.InodeID) {
 	in, ok := c.inodes[inode]
 	if !ok {
 		return
@@ -108,7 +113,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 	in, ok := c.inodes[inode]
 
 	if ok && time.Now().Sub(in.LastValidation) > c.CtimeCacheTimeout {
-		c.Validate(inode)
+		c.validate(inode)
 		in, ok = c.inodes[inode]
 	}
 
@@ -145,6 +150,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 		in.Inode = inode
 		in.InactivityTimeout = c.InactivityTimeout
 		in.BufferSize = c.BufferSize
+		in.MaxOffsetDistance = c.MaxOffsetDistance
 		c.inodes[inode] = in
 	}
 
@@ -165,7 +171,7 @@ func (c *Cache) rm(inode fuseops.InodeID) {
 		return
 	}
 
-	os.Remove(in.Path)
+	in.Close()
 	delete(c.inodes, inode)
 }
 

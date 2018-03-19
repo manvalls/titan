@@ -1,6 +1,7 @@
 package cinode
 
 import (
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -20,16 +21,18 @@ type Inode struct {
 	Path    string
 	Inode   fuseops.InodeID
 
+	MaxOffsetDistance uint64
 	InactivityTimeout time.Duration
 	BufferSize        uint32
 	Atime             time.Time
 	Ctime             time.Time
 	LastValidation    time.Time
 
-	mutex     sync.Mutex
-	listeners []listener
-	sections  []section
-	file      *os.File
+	mutex      sync.Mutex
+	listeners  []listener
+	sections   []section
+	file       *os.File
+	fetchError error
 }
 
 type section struct {
@@ -43,17 +46,25 @@ type listener struct {
 	channel chan error
 }
 
+var errIsClosed = errors.New("inode closed")
+
 // NewInode creates a new inode
 func NewInode() *Inode {
 	return &Inode{
 		Atime:             time.Now(),
 		LastValidation:    time.Now(),
-		BufferSize:        15e3,
+		BufferSize:        65536,
+		MaxOffsetDistance: 100e3,
 		InactivityTimeout: 20 * time.Second,
 		mutex:             sync.Mutex{},
 		listeners:         make([]listener, 0),
 		sections:          make([]section, 0),
 	}
+}
+
+// Close closes this inode
+func (inode *Inode) Close() {
+	inode.sendError(errIsClosed)
 }
 
 // ReadAt reads into the provided buffer at the provided offset
@@ -77,6 +88,10 @@ func (inode *Inode) ReadAt(b []byte, off int64) (n int, err error) {
 func (inode *Inode) getFile() (*os.File, error) {
 	inode.mutex.Lock()
 	defer inode.mutex.Unlock()
+
+	if inode.fetchError != nil {
+		return nil, inode.fetchError
+	}
 
 	inode.Atime = time.Now()
 
@@ -135,13 +150,29 @@ func (inode *Inode) cached(offset, size uint64) bool {
 	return false
 }
 
+func (inode *Inode) shouldFetch(offset uint64) bool {
+	for _, section := range inode.sections {
+		if offset < section.offset {
+			return true
+		}
+
+		if offset-inode.MaxOffsetDistance <= section.offset+section.size {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (inode *Inode) wait(offset, size uint64) <-chan error {
 	inode.mutex.Lock()
 	defer inode.mutex.Unlock()
 
 	channel := make(chan error, 1)
 
-	if inode.cached(offset, size) {
+	if inode.fetchError != nil {
+		channel <- inode.fetchError
+	} else if inode.cached(offset, size) {
 		channel <- nil
 	} else {
 		inode.listeners = append(inode.listeners, listener{
@@ -150,7 +181,9 @@ func (inode *Inode) wait(offset, size uint64) <-chan error {
 			channel: channel,
 		})
 
-		go inode.fetch(offset)
+		if inode.shouldFetch(offset) {
+			go inode.fetch(offset)
+		}
 	}
 
 	return channel
@@ -160,42 +193,34 @@ func (inode *Inode) addRange(offset, size uint64) bool {
 	inode.mutex.Lock()
 	defer inode.mutex.Unlock()
 
-	shouldStop := false
-	overlappingSections := make([]section, 0)
-
-	for _, section := range inode.sections {
-		if section.offset <= offset+size && section.offset+section.size >= offset {
-			if section.offset+section.size > offset+size {
-				shouldStop = true
-			}
-			overlappingSections = append(overlappingSections, section)
-		}
-	}
-
 	newSection := section{
 		offset: offset,
 		size:   size,
 	}
 
-	for _, section := range overlappingSections {
-		to := math.Max(newSection.offset+newSection.size, section.offset+section.size)
-		newSection.offset = math.Min(section.offset, newSection.offset)
-		newSection.size = to - newSection.offset
+	for _, section := range inode.sections {
+		if section.offset <= offset+size && section.offset+section.size >= offset {
+			to := math.Max(newSection.offset+newSection.size, section.offset+section.size)
+			newSection.offset = math.Min(section.offset, newSection.offset)
+			newSection.size = to - newSection.offset
+		}
 	}
 
-	var prevSection *section
+	prevSection := section{}
+	hasPrevSection := false
 	newSections := make([]section, 0)
 	newSectionInserted := false
 
 	for _, section := range inode.sections {
 
-		if !newSectionInserted && (prevSection == nil || prevSection.offset+prevSection.size < newSection.offset) && newSection.offset+newSection.size < section.offset {
+		if !newSectionInserted && (!hasPrevSection || prevSection.offset+prevSection.size < newSection.offset) && newSection.offset+newSection.size < section.offset {
 			newSections = append(newSections, newSection)
 			newSectionInserted = true
 		}
 
-		if section.offset > offset+size || section.offset+section.size < offset {
-			prevSection = &section
+		if section.offset > newSection.offset+newSection.size || section.offset+section.size < newSection.offset {
+			prevSection = section
+			hasPrevSection = true
 			newSections = append(newSections, section)
 		}
 
@@ -217,13 +242,20 @@ func (inode *Inode) addRange(offset, size uint64) bool {
 	}
 
 	inode.listeners = newListeners
-	return shouldStop
+	return newSection.offset+newSection.size > offset+size
 }
 
 func (inode *Inode) sendError(err error) {
 	inode.mutex.Lock()
 	defer inode.mutex.Unlock()
 
+	if inode.file != nil {
+		inode.file.Close()
+		os.Remove(inode.Path)
+		inode.file = nil
+	}
+
+	inode.fetchError = err
 	listeners := inode.listeners
 	inode.listeners = make([]listener, 0)
 
@@ -233,10 +265,19 @@ func (inode *Inode) sendError(err error) {
 }
 
 func (inode *Inode) fetch(offset uint64) {
+	buffer := make([]byte, inode.BufferSize)
 
 	for _, chunk := range inode.Chunks {
 		if chunk.InodeOffset+chunk.Size > offset {
 			var err error
+
+			inode.mutex.Lock()
+			if inode.fetchError != nil {
+				inode.mutex.Unlock()
+				return
+			}
+
+			inode.mutex.Unlock()
 
 			storageChunk := storage.Chunk{
 				Key:          chunk.Key,
@@ -251,13 +292,14 @@ func (inode *Inode) fetch(offset uint64) {
 				storageChunk.Size -= delta
 			}
 
-			buffer := make([]byte, inode.BufferSize)
 			reader, err := inode.Storage.GetReadCloser(storageChunk)
 
 			if err != nil {
 				inode.sendError(err)
 				return
 			}
+
+			defer reader.Close()
 
 			for {
 				n, readErr := reader.Read(buffer)

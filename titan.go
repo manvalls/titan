@@ -24,9 +24,11 @@ type MountOptions struct {
 	FreeSpaceThreshold   *uint64
 	MaxInodes            *uint64
 	BufferSize           *uint32
+	MaxOffsetDistance    *uint64
 	AttributesExpiration *time.Duration
 	EntryExpiration      *time.Duration
 	MaxChunkSize         *int64
+	WaitTimeout          *time.Duration
 }
 
 // Mount mounts the titan file system with the provided options
@@ -50,6 +52,10 @@ func Mount(dir string, opt MountOptions) (mfs *fuse.MountedFileSystem, err error
 
 	if opt.BufferSize != nil {
 		c.BufferSize = *opt.BufferSize
+	}
+
+	if opt.MaxOffsetDistance != nil {
+		c.MaxOffsetDistance = *opt.MaxOffsetDistance
 	}
 
 	if opt.FreeSpaceThreshold != nil {
@@ -81,6 +87,10 @@ func Mount(dir string, opt MountOptions) (mfs *fuse.MountedFileSystem, err error
 
 	if opt.MaxChunkSize != nil {
 		fs.MaxChunkSize = *opt.MaxChunkSize
+	}
+
+	if opt.WaitTimeout != nil {
+		fs.WaitTimeout = *opt.WaitTimeout
 	}
 
 	return fuse.Mount(dir, fuseutil.NewFileSystemServer(fs), opt.MountConfig)

@@ -223,9 +223,15 @@ func main() {
 				},
 				cli.UintFlag{
 					Name:   "cache-buffer",
-					Value:  15e3,
+					Value:  65536,
 					Usage:  "size of the cache buffer",
 					EnvVar: "TITAN_CACHE_BUFFER",
+				},
+				cli.Uint64Flag{
+					Name:   "max-offset-distance",
+					Value:  100e3,
+					Usage:  "max allowed offset distance without a refetch",
+					EnvVar: "TITAN_MAX_OFFSET_DISTANCE",
 				},
 				cli.DurationFlag{
 					Name:   "attr-exp",
@@ -241,9 +247,15 @@ func main() {
 				},
 				cli.Int64Flag{
 					Name:   "max-chunk-size",
-					Value:  100e6,
+					Value:  134217728,
 					Usage:  "max chunk size",
 					EnvVar: "TITAN_MAX_CHUNK_SIZE",
+				},
+				cli.DurationFlag{
+					Name:   "write-wait-timeout",
+					Value:  1 * time.Second,
+					Usage:  "write wait timeout",
+					EnvVar: "TITAN_WRITE_WAIT_TIMEOUT",
 				},
 			),
 			Action: func(c *cli.Context) error {
@@ -276,6 +288,11 @@ func main() {
 
 					PruneInterval: func() *time.Duration {
 						t := c.Duration("prune-interval")
+						return &t
+					}(),
+
+					MaxOffsetDistance: func() *uint64 {
+						t := c.Uint64("max-offset-distance")
 						return &t
 					}(),
 
@@ -316,6 +333,11 @@ func main() {
 
 					MaxChunkSize: func() *int64 {
 						t := c.Int64("max-chunk-size")
+						return &t
+					}(),
+
+					WaitTimeout: func() *time.Duration {
+						t := c.Duration("write-wait-timeout")
 						return &t
 					}(),
 
