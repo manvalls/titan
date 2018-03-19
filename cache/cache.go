@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,9 @@ import (
 	"git.vlrz.es/manvalls/titan/storage"
 	"github.com/manvalls/fuse/fuseops"
 )
+
+var errNotInited = errors.New("This cache has not been initialized")
+var errAlreadyInited = errors.New("This cache has already been initialized")
 
 // Cache abstracts away file I/O through a local cache
 type Cache struct {
@@ -29,6 +33,7 @@ type Cache struct {
 	MaxOffsetDistance  uint64
 
 	stopChannel chan bool
+	inited      bool
 	mutex       sync.Mutex
 	inodes      map[fuseops.InodeID]*cinode.Inode
 }
@@ -38,12 +43,13 @@ func NewCache() *Cache {
 	return &Cache{
 		PruneInterval:      5 * time.Minute,
 		InactivityTimeout:  20 * time.Second,
-		CtimeCacheTimeout:  60 * time.Second,
+		CtimeCacheTimeout:  1 * time.Hour,
 		BufferSize:         65536,
 		MaxOffsetDistance:  100e3,
 		FreeSpaceThreshold: 5 * 1e9,
-		MaxInodes:          10e3,
+		MaxInodes:          20e3,
 		stopChannel:        make(chan bool),
+		inited:             false,
 		mutex:              sync.Mutex{},
 		inodes:             make(map[fuseops.InodeID]*cinode.Inode),
 	}
@@ -51,6 +57,13 @@ func NewCache() *Cache {
 
 // Init initialises the local cache
 func (c *Cache) Init() error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.inited {
+		return errAlreadyInited
+	}
+
 	os.RemoveAll(c.CacheLocation)
 	err := os.MkdirAll(c.CacheLocation, 0777)
 	if err != nil {
@@ -70,12 +83,25 @@ func (c *Cache) Init() error {
 
 	}()
 
+	c.inited = true
 	return nil
 }
 
 // Destroy destroys this cache instance
 func (c *Cache) Destroy() error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if !c.inited {
+		return errNotInited
+	}
+
 	c.stopChannel <- true
+	for inode := range c.inodes {
+		c.rm(inode)
+	}
+
+	c.inited = false
 	return os.RemoveAll(c.CacheLocation)
 }
 
@@ -83,6 +109,11 @@ func (c *Cache) Destroy() error {
 func (c *Cache) Validate(inode fuseops.InodeID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	if !c.inited {
+		return
+	}
+
 	c.validate(inode)
 }
 
@@ -109,6 +140,11 @@ func (c *Cache) validate(inode fuseops.InodeID) {
 // provided offset
 func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, err error) {
 	c.mutex.Lock()
+
+	if !c.inited {
+		c.mutex.Unlock()
+		return 0, errNotInited
+	}
 
 	in, ok := c.inodes[inode]
 
@@ -162,6 +198,11 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 func (c *Cache) Rm(inode fuseops.InodeID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	if !c.inited {
+		return
+	}
+
 	c.rm(inode)
 }
 
@@ -199,6 +240,10 @@ func (c *Cache) shouldPrune() bool {
 		return false
 	}
 
+	if uint64(inodesLen) > c.MaxInodes {
+		return true
+	}
+
 	stats := syscall.Statfs_t{}
 	err := syscall.Statfs(c.CacheLocation, &stats)
 	if err != nil {
@@ -206,7 +251,7 @@ func (c *Cache) shouldPrune() bool {
 	}
 
 	freeSpace := stats.Bavail * uint64(stats.Bsize)
-	if uint64(inodesLen) < c.MaxInodes && freeSpace > c.FreeSpaceThreshold {
+	if freeSpace > c.FreeSpaceThreshold {
 		return false
 	}
 
@@ -221,7 +266,6 @@ func (c *Cache) prune() {
 	inodes := c.inodesSlice()
 
 	for len(inodes) > 0 && c.shouldPrune() {
-
 		sort.Sort(byAtime(inodes))
 
 		if len(inodes) == 1 {
@@ -246,7 +290,7 @@ func (c *Cache) prune() {
 			c.Rm(candidates[0].Inode)
 		} else {
 			for i, inode := range candidates {
-				if i < len(inodes)/2 {
+				if i < len(candidates)/2 {
 					c.Rm(inode.Inode)
 				} else {
 					newInodes = append(newInodes, inode)

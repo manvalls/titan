@@ -251,9 +251,10 @@ func (inode *Inode) sendError(err error) {
 
 	if inode.file != nil {
 		inode.file.Close()
-		os.Remove(inode.Path)
 		inode.file = nil
 	}
+
+	os.Remove(inode.Path)
 
 	inode.fetchError = err
 	listeners := inode.listeners

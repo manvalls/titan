@@ -205,7 +205,7 @@ func main() {
 				},
 				cli.DurationFlag{
 					Name:   "cache-timeout",
-					Value:  60 * time.Second,
+					Value:  1 * time.Hour,
 					Usage:  "cache timeout",
 					EnvVar: "TITAN_CACHE_TIMEOUT",
 				},
