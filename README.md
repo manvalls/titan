@@ -17,9 +17,10 @@ In addition, it:
 - Keeps a read-ahead, write-around local cache of file contents
 - Supports non-sequential reads and writes without any measurable performance
 impact
-- Doesn't delete file contents right away when removing files, but adds them
-to an internal recycle bin - which can be later cleaned up using the cli -,
-allowing you to restore deleted files using your database backups
+- Doesn't delete file contents right away when removing or modifying files, but
+adds them to an internal recycle bin - which can be later cleaned up using the
+cli -, allowing you to restore deleted or modified files using only your
+database backups
 - Supports atomic sequential writes
 
 ## Installation
