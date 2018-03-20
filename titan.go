@@ -3,10 +3,10 @@ package titan
 import (
 	"time"
 
-	"git.vlrz.es/manvalls/titan/cache"
-	"git.vlrz.es/manvalls/titan/database"
-	"git.vlrz.es/manvalls/titan/filesystem"
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/cache"
+	"github.com/manvalls/titan/database"
+	"github.com/manvalls/titan/filesystem"
+	"github.com/manvalls/titan/storage"
 	"github.com/manvalls/fuse"
 	"github.com/manvalls/fuse/fuseutil"
 )

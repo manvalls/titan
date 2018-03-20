@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 
-	"git.vlrz.es/manvalls/titan/storage"
-	"git.vlrz.es/manvalls/titan/storage/multi"
-	"git.vlrz.es/manvalls/titan/storage/s3"
-	"git.vlrz.es/manvalls/titan/storage/zero"
+	"github.com/manvalls/titan/storage"
+	"github.com/manvalls/titan/storage/multi"
+	"github.com/manvalls/titan/storage/s3"
+	"github.com/manvalls/titan/storage/zero"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"

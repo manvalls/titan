@@ -3,7 +3,7 @@ package zero
 import (
 	"io"
 
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/storage"
 )
 
 // Zero is a /dev/null implementation of the storage interface

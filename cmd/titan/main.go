@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"git.vlrz.es/manvalls/titan"
+	"github.com/manvalls/titan"
 	"github.com/manvalls/fuse"
 	"github.com/urfave/cli"
 )

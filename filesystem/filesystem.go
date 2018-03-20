@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"git.vlrz.es/manvalls/titan/cache"
-	"git.vlrz.es/manvalls/titan/database"
-	"git.vlrz.es/manvalls/titan/storage"
-	"git.vlrz.es/manvalls/titan/writer"
+	"github.com/manvalls/titan/cache"
+	"github.com/manvalls/titan/database"
+	"github.com/manvalls/titan/storage"
+	"github.com/manvalls/titan/writer"
 	"github.com/manvalls/fuse/fuseops"
 	"github.com/manvalls/fuse/fuseutil"
 )

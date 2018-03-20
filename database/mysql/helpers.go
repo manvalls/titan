@@ -5,7 +5,7 @@ import (
 	"os"
 	"syscall"
 
-	"git.vlrz.es/manvalls/titan/database"
+	"github.com/manvalls/titan/database"
 	"github.com/manvalls/fuse/fuseops"
 )
 

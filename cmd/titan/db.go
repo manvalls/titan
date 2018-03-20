@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 
-	"git.vlrz.es/manvalls/titan/database"
-	"git.vlrz.es/manvalls/titan/database/mysql"
+	"github.com/manvalls/titan/database"
+	"github.com/manvalls/titan/database/mysql"
 	"github.com/urfave/cli"
 )
 

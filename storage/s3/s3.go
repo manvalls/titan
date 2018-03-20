@@ -4,7 +4,7 @@ import (
 	"io"
 	"strconv"
 
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/storage"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"

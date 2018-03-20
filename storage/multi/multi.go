@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/storage"
 )
 
 // Multi is an implementation of the storage interface which relies on multiple

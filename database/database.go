@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/storage"
 	"github.com/manvalls/fuse/fuseops"
 )
 

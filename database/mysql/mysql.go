@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"git.vlrz.es/manvalls/titan/database"
-	"git.vlrz.es/manvalls/titan/math"
-	"git.vlrz.es/manvalls/titan/storage"
+	"github.com/manvalls/titan/database"
+	"github.com/manvalls/titan/math"
+	"github.com/manvalls/titan/storage"
 	"github.com/manvalls/fuse/fuseops"
 
 	// mysql driver for the sql package
