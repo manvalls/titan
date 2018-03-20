@@ -28,7 +28,7 @@ Install FUSE dependencies for your operating system and build from source
 using latest Go:
 
 ```
-$ go install github.com/manvalls/titan
+$ go install github.com/manvalls/titan/cmd/titan
 ```
 
 ## Basic usage
