@@ -155,11 +155,6 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 			return nil, err
 		}
 
-		if entry.Mode.IsDir() {
-			tx.Rollback()
-			return nil, syscall.EISDIR
-		}
-
 	}
 
 	_, err = tx.Exec("INSERT INTO entries(parent, name, inode) VALUES(?, ?, ?)", uint64(entry.Parent), []byte(entry.Name), uint64(entry.ID))
