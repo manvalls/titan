@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manvalls/fuse/fuseops"
+	"github.com/manvalls/fuse/fuseutil"
 	"github.com/manvalls/titan/cache"
 	"github.com/manvalls/titan/database"
 	"github.com/manvalls/titan/storage"
 	"github.com/manvalls/titan/writer"
-	"github.com/manvalls/fuse/fuseops"
-	"github.com/manvalls/fuse/fuseutil"
 )
 
 const (
@@ -315,12 +315,12 @@ func (fs *FileSystem) Rename(ctx context.Context, op *fuseops.RenameOp) error {
 
 // RmDir removes a directory from the filesystem
 func (fs *FileSystem) RmDir(ctx context.Context, op *fuseops.RmDirOp) error {
-	return fs.Db.Unlink(ctx, op.Parent, op.Name, true)
+	return fs.Db.Unlink(ctx, op.Parent, op.Name)
 }
 
 // Unlink removes an entry from the filesystem
 func (fs *FileSystem) Unlink(ctx context.Context, op *fuseops.UnlinkOp) error {
-	return fs.Db.Unlink(ctx, op.Parent, op.Name, false)
+	return fs.Db.Unlink(ctx, op.Parent, op.Name)
 }
 
 // OpenDir generates a handle for the given dir

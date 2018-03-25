@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manvalls/fuse/fuseops"
 	"github.com/manvalls/titan/database"
 	"github.com/manvalls/titan/math"
 	"github.com/manvalls/titan/storage"
-	"github.com/manvalls/fuse/fuseops"
 
 	// mysql driver for the sql package
 	_ "github.com/go-sql-driver/mysql"
@@ -60,10 +60,8 @@ func (d *Driver) Setup(ctx context.Context) error {
 
 		"CREATE TABLE stats (inodes BIGINT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL)",
 
-		"INSERT INTO inodes(id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 0, 0, 4096, 2, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())",
-		"INSERT INTO entries(parent, name, inode) VALUES(1, '.', 1)",
-		"INSERT INTO entries(parent, name, inode) VALUES(1, '..', 1)",
-		"INSERT INTO stats(inodes, size) VALUES(1, 4096)",
+		"INSERT INTO inodes(id, mode, uid, gid, size, refcount, atime, mtime, ctime, crtime) VALUES(1, 2147484159, 0, 0, 0, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())",
+		"INSERT INTO stats(inodes, size) VALUES(1, 0)",
 	}
 
 	for _, query := range queries {
@@ -124,25 +122,16 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 
 	if entry.ID == 0 {
 		var result sql.Result
-		var size, refcount uint64
 		var id int64
 
 		needsRefcountChange = false
 
-		if entry.Mode.IsDir() {
-			refcount = 2
-			size = 4096
-		} else {
-			refcount = 1
-			size = 0
-		}
-
-		if _, err = tx.Exec("UPDATE stats SET inodes = inodes + 1, size = size + ?", size); err != nil {
+		if _, err = tx.Exec("UPDATE stats SET inodes = inodes + 1"); err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
 		}
 
-		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, size, refcount, entry.SymLink)
+		result, err = tx.Exec("INSERT INTO inodes(mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target) VALUES(?, ?, ?, 0, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), ?)", uint32(entry.Mode), entry.Uid, entry.Gid, entry.SymLink)
 		if err != nil {
 			tx.Rollback()
 			return nil, treatError(err)
@@ -155,22 +144,6 @@ func (d *Driver) Create(ctx context.Context, entry database.Entry) (*database.En
 		}
 
 		entry.ID = fuseops.InodeID(id)
-
-		if entry.Mode.IsDir() {
-
-			_, err = tx.Exec("INSERT INTO entries(parent, name, inode) VALUES (?, '.', ?), (?, '..', ?)", uint64(entry.ID), uint64(entry.ID), uint64(entry.ID), uint64(entry.Parent))
-			if err != nil {
-				tx.Rollback()
-				return nil, treatError(err)
-			}
-
-			_, err = tx.Exec("UPDATE inodes SET refcount = refcount + 1 WHERE id = ?", uint64(entry.Parent))
-			if err != nil {
-				tx.Rollback()
-				return nil, treatError(err)
-			}
-
-		}
 
 		if err = fillInode(); err != nil {
 			return nil, err
@@ -341,7 +314,7 @@ func (d *Driver) CleanOrphanChunks(ctx context.Context, threshold time.Time, st 
 }
 
 // Unlink removes an entry from the file system
-func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string, isFolder bool) error {
+func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string) error {
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return treatError(err)
@@ -356,52 +329,19 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 		return treatError(err)
 	}
 
-	if children > 2 {
+	if children > 0 {
 		tx.Rollback()
 		return syscall.ENOTEMPTY
 	}
 
-	var expectedChildren uint64
-	var wrongTypeError error
-
-	if isFolder {
-		expectedChildren = 2
-		wrongTypeError = syscall.ENOTDIR
-	} else {
-		expectedChildren = 0
-		wrongTypeError = syscall.EISDIR
-	}
-
-	if children != expectedChildren {
+	if _, err = tx.Exec("DELETE FROM entries WHERE parent = ? AND name = ?", uint64(parent), name); err != nil {
 		tx.Rollback()
-		return wrongTypeError
+		return treatError(err)
 	}
 
-	if isFolder {
-		if _, err = tx.Exec("DELETE FROM entries WHERE inode = ? OR parent = ?", uint64(inode), uint64(inode)); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
-
-		if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 2 WHERE id = ?", uint64(inode)); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
-
-		if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 1 WHERE id = ?", uint64(parent)); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
-	} else {
-		if _, err = tx.Exec("DELETE FROM entries WHERE parent = ? AND name = ?", uint64(parent), name); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
-
-		if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 1 WHERE id = ?", uint64(inode)); err != nil {
-			tx.Rollback()
-			return treatError(err)
-		}
+	if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 1 WHERE id = ?", uint64(inode)); err != nil {
+		tx.Rollback()
+		return treatError(err)
 	}
 
 	if err = tx.Commit(); err != nil {
