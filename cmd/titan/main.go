@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/manvalls/titan"
 	"github.com/manvalls/fuse"
+	"github.com/manvalls/titan"
 	"github.com/urfave/cli"
 )
 
@@ -281,7 +281,10 @@ func main() {
 					return err
 				}
 
-				mfs, err := titan.Mount(c.String("mount-point"), titan.MountOptions{
+				mountPoint := c.String("mount-point")
+				fuse.Unmount(mountPoint)
+
+				mfs, err := titan.Mount(mountPoint, titan.MountOptions{
 					Storage:       st,
 					Db:            db,
 					CacheLocation: c.String("cache-folder"),
@@ -351,6 +354,7 @@ func main() {
 				})
 
 				if err != nil {
+					l.Println(err)
 					return err
 				}
 
