@@ -163,7 +163,7 @@ func (fs *FileSystem) GetInodeAttributes(ctx context.Context, op *fuseops.GetIno
 	}
 
 	op.Attributes = inode.InodeAttributes
-	op.AttributesExpiration = time.Now().Add(fs.EntryExpiration)
+	op.AttributesExpiration = time.Now().Add(fs.AttributesExpiration)
 	return nil
 }
 
@@ -175,7 +175,7 @@ func (fs *FileSystem) SetInodeAttributes(ctx context.Context, op *fuseops.SetIno
 	}
 
 	op.Attributes = inode.InodeAttributes
-	op.AttributesExpiration = time.Now().Add(fs.EntryExpiration)
+	op.AttributesExpiration = time.Now().Add(fs.AttributesExpiration)
 	return nil
 }
 
