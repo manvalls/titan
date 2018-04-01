@@ -345,8 +345,9 @@ func main() {
 					}(),
 
 					MountConfig: &fuse.MountConfig{
-						FSName:     "titan",
-						VolumeName: "TitanFS",
+						DisableWritebackCaching: true,
+						FSName:                  "titan",
+						VolumeName:              "TitanFS",
 						Options: map[string]string{
 							"allow_other": "",
 						},

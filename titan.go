@@ -3,12 +3,12 @@ package titan
 import (
 	"time"
 
+	"github.com/manvalls/fuse"
+	"github.com/manvalls/fuse/fuseutil"
 	"github.com/manvalls/titan/cache"
 	"github.com/manvalls/titan/database"
 	"github.com/manvalls/titan/filesystem"
 	"github.com/manvalls/titan/storage"
-	"github.com/manvalls/fuse"
-	"github.com/manvalls/fuse/fuseutil"
 )
 
 // MountOptions holds several mount options

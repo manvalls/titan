@@ -119,7 +119,6 @@ func (fs *FileSystem) writer(ctx context.Context, handle fuseops.HandleID, inode
 	w.Storage = fs.Storage
 	w.InodeID = inode
 	w.MaxChunkSize = fs.MaxChunkSize
-	w.WaitTimeout = fs.WaitTimeout
 
 	fs.writers[handle] = w
 	return w
