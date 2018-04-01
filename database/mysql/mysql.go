@@ -429,7 +429,7 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 		} else {
 			var rows *sql.Rows
 
-			rows, err = tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ?", uint64(i.ID), *size)
+			rows, err = tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset + size > ? FOR UPDATE", uint64(i.ID), *size)
 			if err != nil {
 				tx.Rollback()
 				return nil, treatError(err)
@@ -548,7 +548,7 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, flags uint
 		}
 	}
 
-	rows, err := tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ?", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
+	rows, err := tx.Query("SELECT id, storage, `key`, objectoffset, inodeoffset, size FROM chunks WHERE inode = ? AND inodeoffset < ? AND inodeoffset + size > ? FOR UPDATE", uint64(inode), chunk.InodeOffset+chunk.Size, chunk.InodeOffset)
 	if err != nil {
 		tx.Rollback()
 		return treatError(err)

@@ -5,14 +5,14 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/manvalls/titan/database"
 	"github.com/manvalls/fuse/fuseops"
+	"github.com/manvalls/titan/database"
 )
 
 func (d Driver) getInode(tx *sql.Tx, inode fuseops.InodeID) (*database.Inode, error) {
 	var mode uint32
 
-	row := tx.QueryRow("SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ?", uint64(inode))
+	row := tx.QueryRow("SELECT mode, uid, gid, size, refcount, atime, mtime, ctime, crtime, target FROM inodes WHERE id = ? FOR UPDATE", uint64(inode))
 
 	result := database.Inode{}
 	result.ID = inode
