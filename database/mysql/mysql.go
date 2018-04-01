@@ -519,12 +519,10 @@ func (d *Driver) Touch(ctx context.Context, inode fuseops.InodeID, size *uint64,
 }
 
 // AddChunk adds a chunk to the given inode
-func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk database.Chunk) error {
+func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, flags uint32, chunk database.Chunk) error {
 	chunksToBeDeleted := make([]string, 0)
 	chunksToBeUpdated := make([]database.Chunk, 0)
 	chunksToBeInserted := make([]database.Chunk, 1)
-
-	chunksToBeInserted[0] = chunk
 
 	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -536,6 +534,12 @@ func (d *Driver) AddChunk(ctx context.Context, inode fuseops.InodeID, chunk data
 		tx.Rollback()
 		return treatError(err)
 	}
+
+	if flags&syscall.O_APPEND != 0 {
+		chunk.InodeOffset = i.Size
+	}
+
+	chunksToBeInserted[0] = chunk
 
 	if i.Size < chunk.InodeOffset {
 		if _, err = tx.Exec("INSERT INTO chunks(inode, storage, `key`, objectoffset, inodeoffset, size) VALUES (?, 'zero', '', 0, ?, ?)", uint64(i.ID), i.Size, chunk.InodeOffset-i.Size); err != nil {

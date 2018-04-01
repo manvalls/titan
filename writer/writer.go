@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"syscall"
 
 	"github.com/manvalls/fuse/fuseops"
 	"github.com/manvalls/titan/database"
@@ -21,6 +22,7 @@ type Writer struct {
 	storage.Storage
 	fuseops.InodeID
 	MaxChunkSize int64
+	Flags        uint32
 
 	flushError chan error
 	writer     io.WriteCloser
@@ -78,6 +80,10 @@ func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 		return 0, errIsClosed
 	}
 
+	if w.Flags&syscall.O_APPEND != 0 {
+		off = w.offset
+	}
+
 	if off != w.offset || w.size+int64(len(p)) > w.MaxChunkSize {
 		w.flush()
 	}
@@ -93,7 +99,7 @@ func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 				return
 			}
 
-			w.flushError <- w.AddChunk(context.Background(), w.InodeID, database.Chunk{
+			w.flushError <- w.AddChunk(context.Background(), w.InodeID, w.Flags, database.Chunk{
 				Inode:       w.InodeID,
 				InodeOffset: uint64(off),
 				Chunk:       *chunk,

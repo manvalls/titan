@@ -29,7 +29,7 @@ type Db interface {
 	Get(ctx context.Context, inode fuseops.InodeID) (*Inode, error)
 	Touch(ctx context.Context, inode fuseops.InodeID, size *uint64, mode *os.FileMode, atime *time.Time, mtime *time.Time, uid *uint32, gid *uint32) (*Inode, error)
 
-	AddChunk(ctx context.Context, inode fuseops.InodeID, chunk Chunk) error
+	AddChunk(ctx context.Context, inode fuseops.InodeID, flags uint32, chunk Chunk) error
 	Chunks(ctx context.Context, inode fuseops.InodeID) (*[]Chunk, error)
 	Children(ctx context.Context, inode fuseops.InodeID) (*[]Child, error)
 

@@ -105,23 +105,24 @@ func (fs *FileSystem) children(ctx context.Context, op *fuseops.ReadDirOp) (*[]d
 	return children, nil
 }
 
-func (fs *FileSystem) writer(ctx context.Context, handle fuseops.HandleID, inode fuseops.InodeID) *writer.Writer {
+func (fs *FileSystem) writer(handle fuseops.HandleID) *writer.Writer {
+	fs.writerMutex.Lock()
+	defer fs.writerMutex.Unlock()
+	return fs.writers[handle]
+}
+
+func (fs *FileSystem) createWriter(handle fuseops.HandleID, inode fuseops.InodeID, flags uint32) {
 	fs.writerMutex.Lock()
 	defer fs.writerMutex.Unlock()
 
-	w, ok := fs.writers[handle]
-	if ok {
-		return w
-	}
-
-	w = writer.NewWriter()
+	w := writer.NewWriter()
 	w.Db = fs.Db
 	w.Storage = fs.Storage
 	w.InodeID = inode
 	w.MaxChunkSize = fs.MaxChunkSize
+	w.Flags = flags
 
 	fs.writers[handle] = w
-	return w
 }
 
 // StatFS provides some information about the FS usage
@@ -261,6 +262,8 @@ func (fs *FileSystem) CreateFile(ctx context.Context, op *fuseops.CreateFileOp) 
 	op.Handle = fs.handle()
 	fs.fillChildEntry(&op.Entry, entry.Inode)
 	fs.incLookup(entry.Inode.ID)
+	fs.createWriter(op.Handle, entry.ID, op.Flags)
+
 	return nil
 }
 
@@ -404,6 +407,8 @@ func (fs *FileSystem) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) erro
 
 	op.Handle = fs.handle()
 	fs.Validate(op.Inode)
+	fs.createWriter(op.Handle, op.Inode, op.Flags)
+
 	return nil
 }
 
@@ -430,14 +435,14 @@ func (fs *FileSystem) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) erro
 
 // WriteFile writes content to a file
 func (fs *FileSystem) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
-	w := fs.writer(ctx, op.Handle, op.Inode)
+	w := fs.writer(op.Handle)
 	_, err := w.WriteAt(op.Data, op.Offset)
 	return err
 }
 
 // SyncFile flushes a writer
 func (fs *FileSystem) SyncFile(ctx context.Context, op *fuseops.SyncFileOp) error {
-	w := fs.writer(ctx, op.Handle, op.Inode)
+	w := fs.writer(op.Handle)
 	err := w.Flush()
 	fs.Validate(op.Inode)
 	return err
@@ -445,7 +450,7 @@ func (fs *FileSystem) SyncFile(ctx context.Context, op *fuseops.SyncFileOp) erro
 
 // FlushFile flushes a writer
 func (fs *FileSystem) FlushFile(ctx context.Context, op *fuseops.FlushFileOp) error {
-	w := fs.writer(ctx, op.Handle, op.Inode)
+	w := fs.writer(op.Handle)
 	err := w.Flush()
 	fs.Validate(op.Inode)
 	return err
