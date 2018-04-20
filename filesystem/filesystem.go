@@ -33,7 +33,7 @@ type FileSystem struct {
 	AttributesExpiration time.Duration
 	EntryExpiration      time.Duration
 	MaxChunkSize         int64
-	WaitTimeout          time.Duration
+	EnableCapabilities   bool
 
 	nextHandle fuseops.HandleID
 
@@ -57,7 +57,6 @@ func NewFileSystem() *FileSystem {
 		AttributesExpiration: 10 * time.Second,
 		EntryExpiration:      10 * time.Second,
 		MaxChunkSize:         134217728,
-		WaitTimeout:          1 * time.Second,
 
 		writerMutex: sync.Mutex{},
 		lookupMutex: sync.Mutex{},
@@ -488,6 +487,10 @@ func (fs *FileSystem) RemoveXattr(ctx context.Context, op *fuseops.RemoveXattrOp
 
 // GetXattr retrieves the value of an extended attribute
 func (fs *FileSystem) GetXattr(ctx context.Context, op *fuseops.GetXattrOp) error {
+	if !fs.EnableCapabilities && op.Name == "security.capability" {
+		return syscall.ENODATA
+	}
+
 	value, err := fs.Db.GetXattr(ctx, op.Inode, op.Name)
 	if err != nil {
 		return err
@@ -523,6 +526,10 @@ func (fs *FileSystem) ListXattr(ctx context.Context, op *fuseops.ListXattrOp) er
 
 // SetXattr sets an extended attribute at the given inode
 func (fs *FileSystem) SetXattr(ctx context.Context, op *fuseops.SetXattrOp) error {
+	if !fs.EnableCapabilities && op.Name == "security.capability" {
+		return nil
+	}
+
 	return fs.Db.SetXattr(ctx, op.Inode, op.Name, op.Value, op.Flags)
 }
 

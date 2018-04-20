@@ -251,11 +251,10 @@ func main() {
 					Usage:  "max chunk size",
 					EnvVar: "TITAN_MAX_CHUNK_SIZE",
 				},
-				cli.DurationFlag{
-					Name:   "write-wait-timeout",
-					Value:  1 * time.Second,
-					Usage:  "write wait timeout",
-					EnvVar: "TITAN_WRITE_WAIT_TIMEOUT",
+				cli.BoolFlag{
+					Name:   "enable-capabilities",
+					Usage:  "enable file capabilities",
+					EnvVar: "TITAN_ENABLE_CAPABILITIES",
 				},
 			),
 			Action: func(c *cli.Context) error {
@@ -339,8 +338,8 @@ func main() {
 						return &t
 					}(),
 
-					WaitTimeout: func() *time.Duration {
-						t := c.Duration("write-wait-timeout")
+					EnableCapabilities: func() *bool {
+						t := c.Bool("enable-capabilities")
 						return &t
 					}(),
 

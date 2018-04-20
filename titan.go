@@ -28,7 +28,7 @@ type MountOptions struct {
 	AttributesExpiration *time.Duration
 	EntryExpiration      *time.Duration
 	MaxChunkSize         *int64
-	WaitTimeout          *time.Duration
+	EnableCapabilities   *bool
 }
 
 // Mount mounts the titan file system with the provided options
@@ -89,8 +89,8 @@ func Mount(dir string, opt MountOptions) (mfs *fuse.MountedFileSystem, err error
 		fs.MaxChunkSize = *opt.MaxChunkSize
 	}
 
-	if opt.WaitTimeout != nil {
-		fs.WaitTimeout = *opt.WaitTimeout
+	if opt.EnableCapabilities != nil {
+		fs.EnableCapabilities = *opt.EnableCapabilities
 	}
 
 	return fuse.Mount(dir, fuseutil.NewFileSystemServer(fs), opt.MountConfig)
