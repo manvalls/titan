@@ -37,7 +37,7 @@ func NewWriter() *Writer {
 	m := sync.Mutex{}
 	return &Writer{
 		flushError:   make(chan error),
-		MaxChunkSize: 134217728,
+		MaxChunkSize: 536870912,
 		mutex:        &m,
 		closed:       false,
 	}

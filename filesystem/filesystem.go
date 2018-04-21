@@ -56,7 +56,7 @@ func NewFileSystem() *FileSystem {
 
 		AttributesExpiration: 10 * time.Second,
 		EntryExpiration:      10 * time.Second,
-		MaxChunkSize:         134217728,
+		MaxChunkSize:         536870912,
 
 		writerMutex: sync.Mutex{},
 		lookupMutex: sync.Mutex{},
