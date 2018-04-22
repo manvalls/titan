@@ -544,6 +544,5 @@ func (fs *FileSystem) Destroy() {
 	}
 
 	fs.Db.CleanOrphanInodes(context.Background())
-	fs.Db.Close()
 	fs.Cache.Destroy()
 }

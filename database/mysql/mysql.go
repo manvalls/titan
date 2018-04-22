@@ -361,8 +361,8 @@ func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName 
 	}
 
 	d.unlink(tx, newParent, newName)
-
 	result, err := tx.Exec("UPDATE entries SET parent = ?, name = ? WHERE parent = ? AND name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
+
 	if err != nil {
 		tx.Rollback()
 		return treatError(err)
