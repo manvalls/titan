@@ -315,28 +315,10 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 		return treatError(err)
 	}
 
-	var inode, children uint64
-
-	row := tx.QueryRow("SELECT pe.inode, (SELECT count(*) FROM entries ce WHERE ce.parent = pe.inode) as children FROM entries pe WHERE pe.parent = ? AND pe.name = ?", uint64(parent), name)
-
-	if err = row.Scan(&inode, &children); err != nil {
+	err = d.unlink(tx, parent, name)
+	if err != nil {
 		tx.Rollback()
-		return treatError(err)
-	}
-
-	if children > 0 {
-		tx.Rollback()
-		return syscall.ENOTEMPTY
-	}
-
-	if _, err = tx.Exec("DELETE FROM entries WHERE parent = ? AND name = ?", uint64(parent), name); err != nil {
-		tx.Rollback()
-		return treatError(err)
-	}
-
-	if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 1 WHERE id = ?", uint64(inode)); err != nil {
-		tx.Rollback()
-		return treatError(err)
+		return err
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -346,16 +328,53 @@ func (d *Driver) Unlink(ctx context.Context, parent fuseops.InodeID, name string
 	return nil
 }
 
+func (d *Driver) unlink(tx *sql.Tx, parent fuseops.InodeID, name string) error {
+	var inode, children uint64
+	var err error
+
+	row := tx.QueryRow("SELECT pe.inode, (SELECT count(*) FROM entries ce WHERE ce.parent = pe.inode) as children FROM entries pe WHERE pe.parent = ? AND pe.name = ?", uint64(parent), name)
+
+	if err = row.Scan(&inode, &children); err != nil {
+		return treatError(err)
+	}
+
+	if children > 0 {
+		return syscall.ENOTEMPTY
+	}
+
+	if _, err = tx.Exec("DELETE FROM entries WHERE parent = ? AND name = ?", uint64(parent), name); err != nil {
+		return treatError(err)
+	}
+
+	if _, err = tx.Exec("UPDATE inodes SET refcount = refcount - 1 WHERE id = ?", uint64(inode)); err != nil {
+		return treatError(err)
+	}
+
+	return nil
+}
+
 // Rename renames an entry
 func (d *Driver) Rename(ctx context.Context, oldParent fuseops.InodeID, oldName string, newParent fuseops.InodeID, newName string) error {
-	result, err := d.DB.ExecContext(ctx, "UPDATE entries SET parent = ?, name = ? WHERE parent = ? AND name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
-
+	tx, err := d.DB.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+
+	d.unlink(tx, newParent, newName)
+
+	result, err := tx.Exec("UPDATE entries SET parent = ?, name = ? WHERE parent = ? AND name = ?", uint64(newParent), newName, uint64(oldParent), oldName)
+	if err != nil {
+		tx.Rollback()
 		return treatError(err)
 	}
 
 	if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+		tx.Rollback()
 		return syscall.ENOENT
+	}
+
+	if err = tx.Commit(); err != nil {
+		return treatError(err)
 	}
 
 	return nil
