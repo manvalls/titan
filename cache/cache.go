@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -195,7 +196,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 
 	c.mutex.Unlock()
 	n, err = in.ReadAt(p, off)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		c.Rm(inode)
 	}
 
