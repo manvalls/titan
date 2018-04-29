@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/manvalls/fuse/fuseops"
 	"github.com/manvalls/titan/cache/cinode"
 	"github.com/manvalls/titan/database"
 	"github.com/manvalls/titan/storage"
-	"github.com/manvalls/fuse/fuseops"
 )
 
 var errNotInited = errors.New("This cache has not been initialized")
@@ -160,6 +160,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 
 		dbInode, err = c.Db.Get(context.Background(), inode)
 		if err != nil {
+			c.rm(inode)
 			c.mutex.Unlock()
 			return 0, err
 		}
@@ -167,6 +168,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 		in = cinode.NewInode()
 		chunks, err = c.Db.Chunks(context.Background(), inode)
 		if err != nil {
+			c.rm(inode)
 			c.mutex.Unlock()
 			return 0, err
 		}
@@ -178,6 +180,7 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 
 		key, err = storage.Key()
 		if err != nil {
+			c.rm(inode)
 			c.mutex.Unlock()
 			return 0, err
 		}
@@ -191,7 +194,12 @@ func (c *Cache) ReadInodeAt(inode fuseops.InodeID, p []byte, off int64) (n int, 
 	}
 
 	c.mutex.Unlock()
-	return in.ReadAt(p, off)
+	n, err = in.ReadAt(p, off)
+	if err != nil {
+		c.Rm(inode)
+	}
+
+	return n, err
 }
 
 // Rm removes an entry from the cache
