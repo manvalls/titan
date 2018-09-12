@@ -247,7 +247,7 @@ func main() {
 				},
 				cli.Int64Flag{
 					Name:   "max-chunk-size",
-					Value:  536870912,
+					Value:  134217728,
 					Usage:  "max chunk size",
 					EnvVar: "TITAN_MAX_CHUNK_SIZE",
 				},
