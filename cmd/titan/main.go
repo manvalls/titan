@@ -193,7 +193,7 @@ func main() {
 				},
 				cli.DurationFlag{
 					Name:   "prune-interval",
-					Value:  5 * time.Minute,
+					Value:  2 * time.Minute,
 					Usage:  "prune interval",
 					EnvVar: "TITAN_PRUNE_INTERVAL",
 				},
@@ -211,7 +211,7 @@ func main() {
 				},
 				cli.Uint64Flag{
 					Name:   "disk-threshold",
-					Value:  5 * 1e9,
+					Value:  10 * 1e9,
 					Usage:  "free disk space threshold",
 					EnvVar: "TITAN_DISK_THRESHOLD",
 				},
