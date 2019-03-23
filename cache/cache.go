@@ -27,6 +27,7 @@ type Cache struct {
 	CacheLocation      string
 	PruneInterval      time.Duration
 	InactivityTimeout  time.Duration
+	ReadAheadTimeout   time.Duration
 	CtimeCacheTimeout  time.Duration
 	FreeSpaceThreshold uint64
 	MaxInodes          uint64
@@ -44,6 +45,7 @@ func NewCache() *Cache {
 	return &Cache{
 		PruneInterval:      5 * time.Minute,
 		InactivityTimeout:  20 * time.Second,
+		ReadAheadTimeout:   100 * time.Millisecond,
 		CtimeCacheTimeout:  1 * time.Hour,
 		BufferSize:         65536,
 		MaxOffsetDistance:  100e3,

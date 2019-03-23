@@ -20,6 +20,7 @@ type MountOptions struct {
 	*fuse.MountConfig
 	PruneInterval        *time.Duration
 	InactivityTimeout    *time.Duration
+	ReadAheadTimeout     *time.Duration
 	CtimeCacheTimeout    *time.Duration
 	FreeSpaceThreshold   *uint64
 	MaxInodes            *uint64
@@ -44,6 +45,10 @@ func Mount(dir string, opt MountOptions) (mfs *fuse.MountedFileSystem, err error
 
 	if opt.InactivityTimeout != nil {
 		c.InactivityTimeout = *opt.InactivityTimeout
+	}
+
+	if opt.ReadAheadTimeout != nil {
+		c.ReadAheadTimeout = *opt.ReadAheadTimeout
 	}
 
 	if opt.CtimeCacheTimeout != nil {

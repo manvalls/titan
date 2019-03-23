@@ -204,6 +204,12 @@ func main() {
 					EnvVar: "TITAN_INACTIVITY_TIMEOUT",
 				},
 				cli.DurationFlag{
+					Name:   "readahead-timeout",
+					Value:  100 * time.Millisecond,
+					Usage:  "readahead timeout",
+					EnvVar: "TITAN_READAHEAD_TIMEOUT",
+				},
+				cli.DurationFlag{
 					Name:   "cache-timeout",
 					Value:  1 * time.Hour,
 					Usage:  "cache timeout",
@@ -300,6 +306,11 @@ func main() {
 
 					InactivityTimeout: func() *time.Duration {
 						t := c.Duration("inactivity-timeout")
+						return &t
+					}(),
+
+					ReadAheadTimeout: func() *time.Duration {
+						t := c.Duration("readahead-timeout")
 						return &t
 					}(),
 
