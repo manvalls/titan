@@ -29,6 +29,7 @@ type MountOptions struct {
 	AttributesExpiration *time.Duration
 	EntryExpiration      *time.Duration
 	MaxChunkSize         *int64
+	AsyncFlush           *bool
 	EnableCapabilities   *bool
 }
 
@@ -92,6 +93,10 @@ func Mount(dir string, opt MountOptions) (mfs *fuse.MountedFileSystem, err error
 
 	if opt.MaxChunkSize != nil {
 		fs.MaxChunkSize = *opt.MaxChunkSize
+	}
+
+	if opt.AsyncFlush != nil {
+		fs.AsyncFlush = *opt.AsyncFlush
 	}
 
 	if opt.EnableCapabilities != nil {

@@ -22,6 +22,7 @@ type Writer struct {
 	storage.Storage
 	fuseops.InodeID
 	MaxChunkSize int64
+	AsyncFlush   bool
 	Flags        uint32
 
 	flushError chan error
@@ -56,6 +57,10 @@ func (w *Writer) flush() error {
 
 		w.writer = nil
 		w.size = 0
+
+		if w.AsyncFlush {
+			return nil
+		}
 
 		return <-w.flushError
 	}
@@ -95,15 +100,23 @@ func (w *Writer) WriteAt(p []byte, off int64) (n int, err error) {
 			chunk, gcErr := w.GetChunk(reader)
 			if gcErr != nil {
 				reader.CloseWithError(gcErr)
-				w.flushError <- gcErr
+
+				if !w.AsyncFlush {
+					w.flushError <- gcErr
+				}
+
 				return
 			}
 
-			w.flushError <- w.AddChunk(context.Background(), w.InodeID, w.Flags, database.Chunk{
+			acErr := w.AddChunk(context.Background(), w.InodeID, w.Flags, database.Chunk{
 				Inode:       w.InodeID,
 				InodeOffset: uint64(off),
 				Chunk:       *chunk,
 			})
+
+			if !w.AsyncFlush {
+				w.flushError <- acErr
+			}
 		}()
 
 		w.writer = writer

@@ -258,6 +258,11 @@ func main() {
 					EnvVar: "TITAN_MAX_CHUNK_SIZE",
 				},
 				cli.BoolFlag{
+					Name:   "async-flush",
+					Usage:  "enable async flush",
+					EnvVar: "TITAN_ASYNC_FLUSH",
+				},
+				cli.BoolFlag{
 					Name:   "enable-capabilities",
 					Usage:  "enable file capabilities",
 					EnvVar: "TITAN_ENABLE_CAPABILITIES",
@@ -347,6 +352,11 @@ func main() {
 
 					MaxChunkSize: func() *int64 {
 						t := c.Int64("max-chunk-size")
+						return &t
+					}(),
+
+					AsyncFlush: func() *bool {
+						t := c.Bool("async-flush")
 						return &t
 					}(),
 

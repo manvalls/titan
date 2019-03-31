@@ -33,6 +33,7 @@ type FileSystem struct {
 	AttributesExpiration time.Duration
 	EntryExpiration      time.Duration
 	MaxChunkSize         int64
+	AsyncFlush           bool
 	EnableCapabilities   bool
 
 	nextHandle fuseops.HandleID
@@ -119,6 +120,7 @@ func (fs *FileSystem) createWriter(handle fuseops.HandleID, inode fuseops.InodeI
 	w.Storage = fs.Storage
 	w.InodeID = inode
 	w.MaxChunkSize = fs.MaxChunkSize
+	w.AsyncFlush = fs.AsyncFlush
 	w.Flags = flags
 
 	fs.writers[handle] = w
