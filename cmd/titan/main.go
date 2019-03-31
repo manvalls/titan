@@ -288,6 +288,7 @@ func main() {
 
 				mountPoint := c.String("mount-point")
 				fuse.Unmount(mountPoint)
+				os.MkdirAll(mountPoint, os.ModePerm)
 
 				mfs, err := titan.Mount(mountPoint, titan.MountOptions{
 					Storage:       st,
