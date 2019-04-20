@@ -159,7 +159,12 @@ func (inode *Inode) getSection(offset uint64) *section {
 			return nil
 		}
 
-		if offset-inode.MaxOffsetDistance <= section.offset+section.size {
+		correctedOffset := offset
+		if offset >= inode.MaxOffsetDistance {
+			correctedOffset -= inode.MaxOffsetDistance
+		}
+
+		if correctedOffset <= section.offset+section.size {
 			return section
 		}
 	}
@@ -391,4 +396,5 @@ func (inode *Inode) fetch(offset uint64) {
 		}
 	}
 
+	inode.addRange(offset, inode.Size)
 }
